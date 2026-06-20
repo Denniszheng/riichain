@@ -359,3 +359,20 @@ def route_order(order_id: str, data: dict | None = None):
         raise HTTPException(400, str(e))
     finally:
         db.close()
+
+
+# ── WMS Integration: 领星波次查询 ──
+from pydantic import BaseModel
+
+class WMSWaveRequest(BaseModel):
+    waveNo: str
+
+@router.post("/wms/wave-detail")
+def wms_wave_detail(req: WMSWaveRequest):
+    """从领星 WMS 拉取波次订单数据"""
+    from app.services.wms_service import fetch_wave_detail
+    try:
+        result = fetch_wave_detail(req.waveNo)
+        return result
+    except Exception as e:
+        return {"code": -1, "msg": str(e), "data": None}
