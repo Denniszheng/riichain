@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}一键铺货 — RiiChain{% endblock %}
+{% block content %}
+<h2 class="mb-3"><i class="bi bi-rocket-takeoff"></i> 一键铺货 <small class="text-muted fs-6">Listing Engine</small></h2>
+
+<!-- 平台账号区域 -->
+<div class="card mb-4" style="border:none; border-radius:16px; box-shadow: var(--card-shadow);">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center" style="border-radius:16px 16px 0 0; border-bottom:1px solid #eee;">
+    <h5 class="mb-0"><i class="bi bi-plug"></i> 已绑定平台账号</h5>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addPlatformModal">
+      <i class="bi bi-plus-lg"></i> 添加平台账号
+    </button>
+  </div>
+  <div class="card-body" id="platformCards">
+    <div class="text-muted text-center py-3">加载中...</div>
+  </div>
+</div>
+
+<!-- 铺货任务列表 -->
+<div class="card" style="border:none; border-radius:16px; box-shadow: var(--card-shadow);">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center" style="border-radius:16px 16px 0 0; border-bottom:1px solid #eee;">
+    <h5 class="mb-0"><i class="bi bi-send"></i> 铺货任务列表</h5>
+    <div class="d-flex gap-2">
+      <select class="form-select form-select-sm" id="statusFilter" style="width:140px;" onchange="loadJobs()">
+        <option value="">全部状态</option>
+        <option value="pending">待处理</option>
+        <option value="processing">处理中</option>
+        <option value="success">成功</option>
+        <option value="failed">失败</option>
+        <option value="cancelled">已取消</option>
+      </select>
+      <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#createListingModal">
+        <i class="bi bi-plus-lg"></i> 新建铺货
+      </button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>设计名称</th>
+          <th>目标平台</th>
+          <th>价格</th>
+          <th>状态</th>
+          <th>创建时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="jobsTableBody">
+        <tr><td colspan="6" class="text-center text-muted py-4">加载中...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer bg-white d-flex justify-content-between align-items-center" style="border-radius:0 0 16px 16px;">
+    <small class="text-muted" id="jobsPagination">共 0 条</small>
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-outline-secondary" id="btnPrev" disabled onclick="loadJobs(currentPage-1)">上一页</button>
+      <button class="btn btn-outline-secondary" id="btnNext" disabled onclick="loadJobs(currentPage+1)">下一页</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 添加平台账号 Modal ====== -->
+<div class="modal fade" id="addPlatformModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plug"></i> 添加平台账号</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addPlatformForm">
+          <div class="mb-3">
+            <label class="form-label">平台类型</label>
+            <select class="form-select" id="platPlatform" required>
+              <option value="">请选择</option>
+              <option value="tiktok">TikTok Shop</option>
+              <option value="shopify">Shopify</option>
+              <option value="amazon">Amazon</option>
+              <option value="shopee">Shopee</option>
+              <option value="lazada">Lazada</option>
+              <option value="etsy">Etsy</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">店铺名称 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="platShopName" required placeholder="例如：潮牌T恤旗舰店">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">店铺 ID</label>
+            <input type="text" class="form-control" id="platShopId" placeholder="平台分配的店铺 ID">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Access Token（可选）</label>
+            <input type="text" class="form-control" id="platToken" placeholder="OAuth 授权后获取">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="addPlatform()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 新建铺货 Modal ====== -->
+<div class="modal fade" id="createListingModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-send"></i> 新建铺货</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="listingForm">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">选择设计 <span class="text-danger">*</span></label>
+              <select class="form-select" id="listingDesign" required>
+                <option value="">加载设计中...</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">商品标题</label>
+              <input type="text" class="form-control" id="listingTitle" placeholder="自定义商品标题">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">售价（USD）</label>
+              <input type="number" class="form-control" id="listingPrice" step="0.01" min="0" placeholder="例如：29.99">
+            </div>
+            <div class="col-12">
+              <label class="form-label">商品描述</label>
+              <textarea class="form-control" id="listingDesc" rows="2" placeholder="可选，商品详情描述"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">目标平台（可多选）<span class="text-danger">*</span></label>
+              <div id="platformCheckboxes" class="border rounded p-3" style="max-height:180px; overflow-y:auto;">
+                <div class="text-muted small">加载平台账号中...</div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" onclick="publishBatch()">
+          <i class="bi bi-send-check"></i> 批量铺货（选中平台）
+        </button>
+        <button type="button" class="btn btn-danger" onclick="publishSingle()">
+          <i class="bi bi-send"></i> 单平台发布
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 详细错误 Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning-subtle">
+        <h6 class="modal-title"><i class="bi bi-exclamation-triangle"></i> 任务详情</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="errorModalBody"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 0;
+const PAGE_SIZE = 20;
+
+// ── 状态徽章颜色 ──
+function statusBadge(s) {
+  const map = {
+    pending: { cls: 'badge bg-secondary', text: '待处理' },
+    processing: { cls: 'badge bg-info', text: '处理中' },
+    success: { cls: 'badge bg-success', text: '成功' },
+    failed: { cls: 'badge bg-danger', text: '失败' },
+    cancelled: { cls: 'badge bg-warning text-dark', text: '已取消' }
+  };
+  const m = map[s] || { cls: 'badge bg-light text-dark', text: s };
+  return `<span class="${m.cls}">${m.text}</span>`;
+}
+
+// ── 平台图标 ──
+function platformIcon(p) {
+  const icons = { tiktok: 'bi-tiktok', shopify: 'bi-bag', amazon: 'bi-amazon', shopee: 'bi-shop', lazada: 'bi-cart', etsy: 'bi-gem' };
+  return icons[p] || 'bi-globe';
+}
+
+function platformColor(p) {
+  const colors = { tiktok: '#000', shopify: '#96bf48', amazon: '#ff9900', shopee: '#ee4d2d', lazada: '#0f1568', etsy: '#f56400' };
+  return colors[p] || '#666';
+}
+
+// ── 加载平台账号 ──
+async function loadPlatforms() {
+  const container = document.getElementById('platformCards');
+  const checkboxContainer = document.getElementById('platformCheckboxes');
+  try {
+    const r = await api.get('/platforms/');
+    const accounts = r.data.data;
+    if (accounts.length === 0) {
+      container.innerHTML = '<div class="text-muted text-center py-3">暂无已绑定平台账号，点击上方按钮添加</div>';
+      checkboxContainer.innerHTML = '<div class="text-muted small">暂无可用平台账号，请先添加</div>';
+      return;
+    }
+    container.innerHTML = accounts.map(a => {
+      const color = platformColor(a.platform);
+      const statusCls = a.is_active ? 'text-success' : 'text-secondary';
+      const statusText = a.is_active ? '已连接' : '已禁用';
+      return `
+        <div class="d-inline-flex align-items-center border rounded-3 p-2 me-2 mb-2" style="min-width:180px;">
+          <i class="bi ${platformIcon(a.platform)} fs-4 me-2" style="color:${color};"></i>
+          <div>
+            <div class="fw-semibold small">${a.shop_name}</div>
+            <small class="text-muted">${a.platform.toUpperCase()} · <span class="${statusCls}">${statusText}</span></small>
+          </div>
+          <div class="ms-auto dropdown">
+            <button class="btn btn-sm btn-outline-secondary border-0" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="#" onclick="togglePlatform('${a.id}')"><i class="bi bi-toggle-on"></i> ${a.is_active?'禁用':'启用'}</a></li>
+              <li><a class="dropdown-item text-danger" href="#" onclick="deletePlatform('${a.id}')"><i class="bi bi-trash"></i> 删除</a></li>
+            </ul>
+          </div>
+        </div>`;
+    }).join('');
+
+    // 更新铺货 Modal 中的勾选框
+    checkboxContainer.innerHTML = accounts.filter(a => a.is_active).map(a => `
+      <div class="form-check">
+        <input class="form-check-input platform-cb" type="checkbox" value="${a.id}" id="cb_${a.id}">
+        <label class="form-check-label small" for="cb_${a.id}">
+          <i class="bi ${platformIcon(a.platform)}" style="color:${platformColor(a.platform)};"></i>
+          ${a.shop_name} <span class="text-muted">(${a.platform.toUpperCase()})</span>
+        </label>
+      </div>
+    `).join('') || '<div class="text-muted small">暂无可用平台账号，请先添加</div>';
+  } catch (e) {
+    container.innerHTML = '<div class="text-danger text-center py-2">加载失败</div>';
+  }
+}
+
+// ── 加载铺货任务 ──
+async function loadJobs(page) {
+  currentPage = page || 0;
+  const status = document.getElementById('statusFilter').value;
+  try {
+    const params = { skip: currentPage * PAGE_SIZE, limit: PAGE_SIZE };
+    if (status) params.status = status;
+    const r = await api.get('/listing/', { params });
+    const jobs = r.data.data;
+    const total = r.data.total;
+    const tbody = document.getElementById('jobsTableBody');
+    if (jobs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无铺货记录</td></tr>';
+    } else {
+      tbody.innerHTML = jobs.map(j => `
+        <tr>
+          <td class="fw-semibold">${j.design_title || j.design_id?.substring(0,8) || '-'}</td>
+          <td><i class="bi ${platformIcon(j.platform)} me-1" style="color:${platformColor(j.platform)}"></i>${j.platform_shop_name || j.platform || '-'}</td>
+          <td>${j.price_used ? '$' + j.price_used.toFixed(2) : '-'}</td>
+          <td>${statusBadge(j.status)}</td>
+          <td><small>${j.created_at ? new Date(j.created_at).toLocaleString('zh-CN') : '-'}</small></td>
+          <td>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-secondary btn-sm" title="详情" onclick="showJobDetail('${j.id}','${j.status}','${j.error_msg || ''}','${j.title_used || ''}')"><i class="bi bi-eye"></i></button>
+              ${(j.status==='pending'||j.status==='processing') ? `<button class="btn btn-outline-warning btn-sm" title="取消" onclick="cancelJob('${j.id}')"><i class="bi bi-x-circle"></i></button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+    document.getElementById('jobsPagination').textContent = `共 ${total} 条`;
+    document.getElementById('btnPrev').disabled = currentPage <= 0;
+    document.getElementById('btnNext').disabled = (currentPage + 1) * PAGE_SIZE >= total;
+  } catch (e) {
+    document.getElementById('jobsTableBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-2">加载失败</td></tr>';
+  }
+}
+
+// ── 加载设计列表 ──
+async function loadDesigns() {
+  const sel = document.getElementById('listingDesign');
+  try {
+    const r = await api.get('/designs/', { params: { limit: 200 } });
+    const designs = r.data.data;
+    if (designs.length === 0) {
+      sel.innerHTML = '<option value="">暂无可选设计</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">请选择设计</option>' + designs.map(d =>
+      `<option value="${d.id}">${d.title} ${d.status !== '已发布' ? '[' + d.status + ']' : ''}</option>`
+    ).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">加载失败</option>';
+  }
+}
+
+// ── 添加平台账号 ──
+async function addPlatform() {
+  const data = {
+    platform: document.getElementById('platPlatform').value,
+    shop_name: document.getElementById('platShopName').value.trim(),
+    shop_id: document.getElementById('platShopId').value.trim() || null,
+    access_token: document.getElementById('platToken').value.trim() || null,
+  };
+  if (!data.platform || !data.shop_name) { alert('请填写必填项'); return; }
+  try {
+    await api.post('/platforms/', data);
+    document.getElementById('addPlatformForm').reset();
+    bootstrap.Modal.getInstance(document.getElementById('addPlatformModal')).hide();
+    loadPlatforms();
+  } catch (e) {}
+}
+
+// ── 启用/禁用平台 ──
+async function togglePlatform(id) {
+  try {
+    const r = await api.put(`/platforms/${id}/toggle`);
+    loadPlatforms();
+    loadJobs();
+  } catch (e) {}
+}
+
+// ── 删除平台 ──
+async function deletePlatform(id) {
+  if (!confirm('确认删除此平台账号？此操作不可恢复。')) return;
+  try {
+    await api.delete(`/platforms/${id}`);
+    loadPlatforms();
+  } catch (e) {}
+}
+
+// ── 单平台发布 ──
+async function publishSingle() {
+  const designId = document.getElementById('listingDesign').value;
+  const title = document.getElementById('listingTitle').value.trim();
+  const price = document.getElementById('listingPrice').value;
+  const desc = document.getElementById('listingDesc').value.trim();
+  const checked = document.querySelectorAll('.platform-cb:checked');
+  if (!designId) { alert('请选择设计'); return; }
+  if (checked.length === 0) { alert('请至少选择一个目标平台'); return; }
+  // 只取第一个选中平台
+  const platformId = checked[0].value;
+  try {
+    await api.post('/listing/', { design_id: designId, platform_account_id: platformId, title, price: price ? parseFloat(price) : null, description: desc });
+    bootstrap.Modal.getInstance(document.getElementById('createListingModal')).hide();
+    document.getElementById('listingForm').reset();
+    loadJobs();
+  } catch (e) {}
+}
+
+// ── 批量铺货 ──
+async function publishBatch() {
+  const designId = document.getElementById('listingDesign').value;
+  const title = document.getElementById('listingTitle').value.trim();
+  const price = document.getElementById('listingPrice').value;
+  const desc = document.getElementById('listingDesc').value.trim();
+  const checked = document.querySelectorAll('.platform-cb:checked');
+  if (!designId) { alert('请选择设计'); return; }
+  if (checked.length === 0) { alert('请至少选择一个目标平台'); return; }
+  const platformIds = Array.from(checked).map(cb => cb.value);
+  try {
+    await api.post('/listing/batch', { design_id: designId, platform_account_ids: platformIds, title, price: price ? parseFloat(price) : null, description: desc });
+    bootstrap.Modal.getInstance(document.getElementById('createListingModal')).hide();
+    document.getElementById('listingForm').reset();
+    loadJobs();
+  } catch (e) {}
+}
+
+// ── 取消任务 ──
+async function cancelJob(id) {
+  if (!confirm('确认取消此铺货任务？')) return;
+  try {
+    await api.put(`/listing/${id}/cancel`);
+    loadJobs();
+  } catch (e) {}
+}
+
+// ── 查看任务详情 ──
+function showJobDetail(id, status, error, title) {
+  const body = document.getElementById('errorModalBody');
+  body.innerHTML = `
+    <p><strong>任务ID：</strong>${id}</p>
+    <p><strong>状态：</strong>${statusBadge(status)}</p>
+    <p><strong>标题：</strong>${title || '-'}</p>
+    <p><strong>错误信息：</strong>${error || '无'}</p>
+  `;
+  new bootstrap.Modal(document.getElementById('errorModal')).show();
+}
+
+// ── 初始化 ──
+loadPlatforms();
+loadJobs();
+loadDesigns();
+</script>
+{% endblock %}

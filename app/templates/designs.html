@@ -1,0 +1,722 @@
+{% extends "base.html" %}
+
+{% block title %}Design Hub — RiiChain{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── 顶部栏 ── */
+    .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+    }
+    .page-title {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+    }
+    .page-title span {
+        color: var(--primary);
+    }
+
+    /* ── 状态 Tabs ── */
+    .status-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    .status-tab {
+        padding: 6px 18px;
+        border-radius: 20px;
+        border: 1.5px solid #e0e0e0;
+        background: #fff;
+        color: #555;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.18s;
+        user-select: none;
+    }
+    .status-tab:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+    }
+    .status-tab.active {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+    }
+    .status-tab .badge-count {
+        display: inline-block;
+        background: rgba(255,255,255,0.3);
+        color: inherit;
+        border-radius: 10px;
+        padding: 0 6px;
+        font-size: 0.75rem;
+        margin-left: 4px;
+        font-weight: 600;
+    }
+    .status-tab:not(.active) .badge-count {
+        background: #f0f0f0;
+        color: #888;
+    }
+
+    /* ── 设计卡片网格 ── */
+    .designs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 20px;
+    }
+    .design-card {
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+        position: relative;
+    }
+    .design-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 28px rgba(0,0,0,0.13);
+    }
+
+    /* 图片区域 */
+    .design-thumb {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        background: #f5f5f5;
+        display: block;
+    }
+    .design-thumb-placeholder {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: linear-gradient(135deg, #f5f5f5 0%, #ebebeb 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ccc;
+        font-size: 2.5rem;
+    }
+
+    /* 爆款角标 */
+    .hit-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: #ff6b35;
+        color: #fff;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        letter-spacing: 0.03em;
+    }
+
+    /* 卡片信息 */
+    .design-info {
+        padding: 12px 14px 14px;
+    }
+    .design-title {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #1a1a1a;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .design-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+    .design-date {
+        font-size: 0.75rem;
+        color: #999;
+    }
+
+    /* 状态徽章 */
+    .status-badge {
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 2px 10px;
+        border-radius: 10px;
+        letter-spacing: 0.02em;
+    }
+    .status-草稿   { background: #f0f0f0; color: #666; }
+    .status-待发布 { background: #fff3cd; color: #856404; }
+    .status-已发布 { background: #d1eddd; color: #0a6c2b; }
+    .status-已下线 { background: #f8d7da; color: #842029; }
+
+    /* 操作按钮行 */
+    .design-actions {
+        display: flex;
+        gap: 6px;
+    }
+    .design-actions .btn {
+        flex: 1;
+        font-size: 0.75rem;
+        padding: 4px 0;
+        border-radius: 8px;
+    }
+
+    /* ── 空状态 ── */
+    .empty-state {
+        text-align: center;
+        padding: 80px 20px;
+        color: #aaa;
+    }
+    .empty-state i {
+        font-size: 4rem;
+        display: block;
+        margin-bottom: 16px;
+        color: #ddd;
+    }
+    .empty-state p {
+        font-size: 1rem;
+        margin-bottom: 20px;
+    }
+
+    /* ── 上传 Modal ── */
+    .drop-zone {
+        border: 2px dashed #ddd;
+        border-radius: 12px;
+        padding: 40px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background 0.2s;
+        position: relative;
+        background: #fafafa;
+    }
+    .drop-zone.dragover {
+        border-color: var(--primary);
+        background: #fff5f7;
+    }
+    .drop-zone i {
+        font-size: 2.5rem;
+        color: #ccc;
+        display: block;
+        margin-bottom: 8px;
+    }
+    .drop-zone p {
+        color: #888;
+        margin: 0;
+        font-size: 0.9rem;
+    }
+    .drop-zone .file-preview {
+        display: none;
+        margin-top: 12px;
+    }
+    .drop-zone .file-preview img {
+        max-height: 160px;
+        max-width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    #fileInput { display: none; }
+
+    /* ── 加载骨架 ── */
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.4s infinite;
+        border-radius: 8px;
+    }
+    @keyframes shimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    /* ── 上传进度 ── */
+    #uploadProgress { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- ── 页面顶部 ── -->
+<div class="page-header">
+    <h1 class="page-title"><span><i class="bi bi-palette me-2"></i>Design Hub</span></h1>
+    <div class="d-flex align-items-center gap-3">
+        <span class="text-muted" id="totalCount" style="font-size:0.875rem;"></span>
+        <button class="btn btn-sm" style="background:var(--primary);color:#fff;border-radius:10px;font-weight:600;"
+                data-bs-toggle="modal" data-bs-target="#uploadModal">
+            <i class="bi bi-cloud-upload me-1"></i> 上传设计
+        </button>
+    </div>
+</div>
+
+<!-- ── 状态 Tabs ── -->
+<div class="status-tabs" id="statusTabs">
+    <div class="status-tab active" data-status="">全部 <span class="badge-count" id="cnt-all">0</span></div>
+    <div class="status-tab" data-status="草稿">草稿 <span class="badge-count" id="cnt-draft">0</span></div>
+    <div class="status-tab" data-status="待发布">待发布 <span class="badge-count" id="cnt-pending">0</span></div>
+    <div class="status-tab" data-status="已发布">已发布 <span class="badge-count" id="cnt-published">0</span></div>
+    <div class="status-tab" data-status="已下线">已下线 <span class="badge-count" id="cnt-offline">0</span></div>
+</div>
+
+<!-- ── 设计网格 ── -->
+<div id="designsGrid" class="designs-grid"></div>
+
+<!-- ── 空状态 ── -->
+<div id="emptyState" class="empty-state" style="display:none;">
+    <i class="bi bi-image-alt"></i>
+    <p>还没有设计，点击上传第一张！</p>
+    <button class="btn" style="background:var(--primary);color:#fff;border-radius:10px;font-weight:600;padding:8px 28px;"
+            data-bs-toggle="modal" data-bs-target="#uploadModal">
+        <i class="bi bi-cloud-upload me-1"></i> 立即上传
+    </button>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     上传 Modal
+════════════════════════════════════════════════ -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
+        <div class="modal-content border-0" style="border-radius:18px;overflow:hidden;">
+            <div class="modal-header border-0 pb-0" style="background:var(--primary);color:#fff;">
+                <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2"></i>上传新设计</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="uploadForm" novalidate>
+
+                    <!-- 拖拽区域 -->
+                    <div class="drop-zone mb-3" id="dropZone">
+                        <i class="bi bi-image"></i>
+                        <p>拖拽图片到这里，或 <span style="color:var(--primary);font-weight:600;">点击选择文件</span></p>
+                        <p style="font-size:0.78rem;color:#bbb;margin-top:4px;">支持 PNG / JPG / WEBP / GIF / PDF · 最大 20MB</p>
+                        <div class="file-preview" id="filePreview">
+                            <img id="previewImg" src="" alt="预览">
+                            <p id="previewName" style="font-size:0.78rem;color:#666;margin-top:6px;"></p>
+                        </div>
+                        <input type="file" id="fileInput" accept="image/*,.pdf,.ai,.psd">
+                    </div>
+
+                    <!-- 标题 -->
+                    <div class="mb-3">
+                        <label class="form-label fw-600" style="font-size:0.875rem;font-weight:600;">
+                            设计标题 <span style="color:var(--primary);">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="designTitle"
+                               placeholder="为你的设计起个名字…" required>
+                        <div class="invalid-feedback">请输入设计标题</div>
+                    </div>
+
+                    <!-- 描述 -->
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:0.875rem;font-weight:600;">描述（可选）</label>
+                        <textarea class="form-control" id="designDesc" rows="2"
+                                  placeholder="设计风格、适用场景…" style="resize:none;"></textarea>
+                    </div>
+
+                    <!-- 标签 -->
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:0.875rem;font-weight:600;">标签（逗号分隔）</label>
+                        <input type="text" class="form-control" id="designTags"
+                               placeholder="复古, 搞笑, 文字…">
+                    </div>
+
+                    <!-- 进度条 -->
+                    <div id="uploadProgress">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="font-size:0.8rem;color:#666;">上传中…</span>
+                            <span id="uploadPct" style="font-size:0.8rem;color:var(--primary);font-weight:600;">0%</span>
+                        </div>
+                        <div class="progress" style="height:6px;border-radius:4px;">
+                            <div class="progress-bar" id="progressBar"
+                                 style="background:var(--primary);width:0%;transition:width 0.3s;"></div>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:10px;">取消</button>
+                <button type="button" class="btn fw-600" id="submitUpload"
+                        style="background:var(--primary);color:#fff;border-radius:10px;min-width:100px;">
+                    <i class="bi bi-upload me-1"></i> 上传
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     确认删除 Modal
+════════════════════════════════════════════════ -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0" style="border-radius:16px;">
+            <div class="modal-body text-center p-4">
+                <i class="bi bi-exclamation-triangle-fill" style="font-size:2.5rem;color:#dc3545;"></i>
+                <h6 class="mt-3 mb-1 fw-bold">确认下线此设计？</h6>
+                <p class="text-muted" style="font-size:0.85rem;">设计将被标记为「已下线」状态</p>
+            </div>
+            <div class="modal-footer border-0 pt-0 justify-content-center gap-2">
+                <button class="btn btn-light" data-bs-dismiss="modal" style="border-radius:10px;min-width:80px;">取消</button>
+                <button class="btn btn-danger" id="confirmDelete" style="border-radius:10px;min-width:80px;">确认下线</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Design Hub 前端逻辑
+═══════════════════════════════════════════════════════════ */
+
+// ── 状态 ──────────────────────────────────────────────────
+let currentStatus = '';        // 当前选中 tab
+let designs       = [];        // 当前渲染的设计列表
+let allCounts     = {};        // 各状态计数
+let pendingDeleteId = null;    // 待删除的设计 ID
+
+// ── 初始化 ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    loadDesigns();
+    bindTabs();
+    bindUpload();
+    bindDeleteConfirm();
+});
+
+// ── 加载设计列表 ──────────────────────────────────────────
+async function loadDesigns(status = currentStatus) {
+    showSkeletons();
+    try {
+        const params = { skip: 0, limit: 200 };
+        if (status) params.status = status;
+
+        const res = await api.get('/designs/', { params });
+        designs = res.data.data || [];
+
+        // 同时加载所有状态计数（第一次或全部刷新时）
+        await refreshCounts();
+        renderGrid(designs);
+    } catch (e) {
+        console.error('加载设计失败', e);
+    }
+}
+
+// ── 计算各状态数量 ────────────────────────────────────────
+async function refreshCounts() {
+    try {
+        const all = await api.get('/designs/', { params: { limit: 1000 } });
+        const list = all.data.data || [];
+        allCounts = { '': list.length, '草稿': 0, '待发布': 0, '已发布': 0, '已下线': 0 };
+        list.forEach(d => { if (allCounts[d.status] !== undefined) allCounts[d.status]++; });
+        updateCountBadges();
+    } catch {}
+}
+
+function updateCountBadges() {
+    document.getElementById('cnt-all').textContent      = allCounts['']       || 0;
+    document.getElementById('cnt-draft').textContent    = allCounts['草稿']   || 0;
+    document.getElementById('cnt-pending').textContent  = allCounts['待发布'] || 0;
+    document.getElementById('cnt-published').textContent= allCounts['已发布'] || 0;
+    document.getElementById('cnt-offline').textContent  = allCounts['已下线'] || 0;
+
+    const total = allCounts[currentStatus !== undefined ? currentStatus : ''] || 0;
+    document.getElementById('totalCount').textContent =
+        currentStatus ? `共 ${designs.length} 条` : `共 ${allCounts[''] || 0} 个设计`;
+}
+
+// ── 渲染网格 ──────────────────────────────────────────────
+function renderGrid(list) {
+    const grid  = document.getElementById('designsGrid');
+    const empty = document.getElementById('emptyState');
+
+    if (!list || list.length === 0) {
+        grid.innerHTML  = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+    grid.innerHTML = list.map(d => designCardHTML(d)).join('');
+}
+
+function designCardHTML(d) {
+    const statusClass = `status-${d.status}`;
+    const thumb = d.thumbnail_path || d.file_path;
+    const thumbHTML = thumb
+        ? `<img class="design-thumb" src="${escHtml(thumb)}" alt="${escHtml(d.title)}"
+                onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+           <div class="design-thumb-placeholder" style="display:none;"><i class="bi bi-image"></i></div>`
+        : `<div class="design-thumb-placeholder"><i class="bi bi-image"></i></div>`;
+
+    const hitBadge = d.is_hit ? `<div class="hit-badge">🔥 爆款</div>` : '';
+
+    const date = d.created_at
+        ? new Date(d.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+        : '—';
+
+    // 操作按钮
+    let actionBtns = '';
+    if (d.status === '草稿') {
+        actionBtns = `
+            <button class="btn btn-sm btn-outline-warning" onclick="updateStatus('${d.id}','待发布')">
+                <i class="bi bi-send"></i> 提交
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="promptDelete('${d.id}')">
+                <i class="bi bi-trash"></i>
+            </button>`;
+    } else if (d.status === '待发布') {
+        actionBtns = `
+            <button class="btn btn-sm btn-outline-success" onclick="updateStatus('${d.id}','已发布')">
+                <i class="bi bi-check-circle"></i> 发布
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="updateStatus('${d.id}','草稿')">
+                <i class="bi bi-arrow-counterclockwise"></i>
+            </button>`;
+    } else if (d.status === '已发布') {
+        actionBtns = `
+            <button class="btn btn-sm btn-outline-danger" onclick="updateStatus('${d.id}','已下线')">
+                <i class="bi bi-pause-circle"></i> 下线
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="viewDetail('${d.id}')">
+                <i class="bi bi-eye"></i>
+            </button>`;
+    } else if (d.status === '已下线') {
+        actionBtns = `
+            <button class="btn btn-sm btn-outline-success" onclick="updateStatus('${d.id}','已发布')">
+                <i class="bi bi-play-circle"></i> 上线
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="promptDelete('${d.id}')">
+                <i class="bi bi-trash"></i>
+            </button>`;
+    }
+
+    return `
+    <div class="design-card" id="card-${d.id}">
+        ${thumbHTML}
+        ${hitBadge}
+        <div class="design-info">
+            <div class="design-title" title="${escHtml(d.title)}">${escHtml(d.title)}</div>
+            <div class="design-meta">
+                <span class="status-badge ${statusClass}">${d.status}</span>
+                <span class="design-date">${date}</span>
+            </div>
+            <div class="design-actions">${actionBtns}</div>
+        </div>
+    </div>`;
+}
+
+// ── 骨架屏 ────────────────────────────────────────────────
+function showSkeletons() {
+    const grid = document.getElementById('designsGrid');
+    document.getElementById('emptyState').style.display = 'none';
+    grid.innerHTML = Array.from({ length: 8 }).map(() => `
+        <div class="design-card">
+            <div class="skeleton" style="width:100%;aspect-ratio:1/1;"></div>
+            <div class="design-info">
+                <div class="skeleton" style="height:14px;width:70%;margin-bottom:10px;"></div>
+                <div class="skeleton" style="height:12px;width:50%;"></div>
+            </div>
+        </div>`).join('');
+}
+
+// ── Tabs ──────────────────────────────────────────────────
+function bindTabs() {
+    document.getElementById('statusTabs').addEventListener('click', e => {
+        const tab = e.target.closest('.status-tab');
+        if (!tab) return;
+        document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentStatus = tab.dataset.status || '';
+        loadDesigns(currentStatus);
+    });
+}
+
+// ── 更新状态 ──────────────────────────────────────────────
+async function updateStatus(id, newStatus) {
+    try {
+        await api.put(`/designs/${id}/status`, { status: newStatus });
+        await loadDesigns(currentStatus);
+    } catch {}
+}
+
+// ── 删除（软删除）────────────────────────────────────────
+function promptDelete(id) {
+    pendingDeleteId = id;
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+function bindDeleteConfirm() {
+    document.getElementById('confirmDelete').addEventListener('click', async () => {
+        if (!pendingDeleteId) return;
+        const modal = bootstrap.Modal.getInstance(document.getElementById('deleteModal'));
+        modal.hide();
+        try {
+            await api.delete(`/designs/${pendingDeleteId}`);
+            await loadDesigns(currentStatus);
+        } catch {}
+        pendingDeleteId = null;
+    });
+}
+
+// ── 详情（暂跳转 API）────────────────────────────────────
+function viewDetail(id) {
+    window.open(`/api/v1/designs/${id}`, '_blank');
+}
+
+// ══════════════════════════════════════════════════════════
+// 上传逻辑
+// ══════════════════════════════════════════════════════════
+function bindUpload() {
+    const dropZone   = document.getElementById('dropZone');
+    const fileInput  = document.getElementById('fileInput');
+    const preview    = document.getElementById('filePreview');
+    const previewImg = document.getElementById('previewImg');
+    const previewName= document.getElementById('previewName');
+    let selectedFile = null;
+
+    // 点击拖拽区 → 打开文件选择
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    // 文件选择
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files[0]) showPreview(fileInput.files[0]);
+    });
+
+    // 拖拽进入
+    dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const f = e.dataTransfer.files[0];
+        if (f) { fileInput.files = e.dataTransfer.files; showPreview(f); }
+    });
+
+    function showPreview(file) {
+        selectedFile = file;
+        previewName.textContent = `${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = ev => { previewImg.src = ev.target.result; };
+            reader.readAsDataURL(file);
+            previewImg.style.display = 'block';
+        } else {
+            previewImg.style.display = 'none';
+        }
+        preview.style.display = 'block';
+    }
+
+    // 提交
+    document.getElementById('submitUpload').addEventListener('click', async () => {
+        const titleEl = document.getElementById('designTitle');
+        const title   = titleEl.value.trim();
+        if (!title) {
+            titleEl.classList.add('is-invalid');
+            return;
+        }
+        titleEl.classList.remove('is-invalid');
+
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('description', document.getElementById('designDesc').value.trim());
+        formData.append('tags', document.getElementById('designTags').value.trim());
+        if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+
+        // 进度条
+        const progressDiv = document.getElementById('uploadProgress');
+        const progressBar = document.getElementById('progressBar');
+        const pct         = document.getElementById('uploadPct');
+        const submitBtn   = document.getElementById('submitUpload');
+        progressDiv.style.display = 'block';
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> 上传中…';
+
+        try {
+            await axios.post('/api/v1/designs/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: e => {
+                    const p = Math.round((e.loaded / e.total) * 100);
+                    progressBar.style.width = p + '%';
+                    pct.textContent = p + '%';
+                },
+                timeout: 60000,
+            });
+
+            // 重置 Modal
+            document.getElementById('uploadForm').reset();
+            preview.style.display = 'none';
+            previewImg.src = '';
+            progressDiv.style.display = 'none';
+            progressBar.style.width = '0%';
+
+            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+            currentStatus = '';  // 回到全部
+            document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+            document.querySelector('.status-tab[data-status=""]').classList.add('active');
+            await loadDesigns('');
+
+            // 成功提示
+            showToast('上传成功！', 'success');
+        } catch (err) {
+            const msg = err.response?.data?.detail || err.message || '上传失败';
+            showToast(msg, 'danger');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-upload me-1"></i> 上传';
+            progressDiv.style.display = 'none';
+        }
+    });
+
+    // Modal 关闭时重置
+    document.getElementById('uploadModal').addEventListener('hidden.bs.modal', () => {
+        document.getElementById('uploadForm').reset();
+        preview.style.display = 'none';
+        previewImg.src = '';
+        document.getElementById('designTitle').classList.remove('is-invalid');
+        document.getElementById('uploadProgress').style.display = 'none';
+        document.getElementById('progressBar').style.width = '0%';
+    });
+}
+
+// ── Toast 通知 ────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+    const id = 'toast-' + Date.now();
+    const colorMap = { success: '#198754', danger: '#dc3545', warning: '#ffc107', info: '#0dcaf0' };
+    const el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = `
+        position:fixed;bottom:24px;right:24px;z-index:9999;
+        background:#fff;border-left:4px solid ${colorMap[type]};
+        border-radius:10px;padding:12px 20px;
+        box-shadow:0 4px 20px rgba(0,0,0,0.12);
+        font-size:0.9rem;font-weight:500;color:#333;
+        animation:slideIn 0.3s ease;max-width:300px;
+    `;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+}
+
+// ── XSS 转义 ─────────────────────────────────────────────
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+
+<style>
+@keyframes slideIn {
+    from { opacity:0; transform:translateX(30px); }
+    to   { opacity:1; transform:translateX(0); }
+}
+</style>
+{% endblock %}

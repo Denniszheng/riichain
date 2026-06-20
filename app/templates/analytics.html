@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}销售分析 — RiiChain{% endblock %}
+{% block extra_css %}
+<style>
+  .overview-card { border: none; border-radius: 16px; box-shadow: var(--card-shadow); }
+  .overview-card .icon-circle {
+    width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+  }
+  .progress-bar-platform { border-radius: 8px; height: 24px; font-size: 0.8rem; }
+  .chart-container { position: relative; height: 320px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="bi bi-graph-up"></i> 销售分析 <small class="text-muted fs-6">Analytics</small></h2>
+  <button class="btn btn-outline-danger" id="btnSync" onclick="syncData()">
+    <i class="bi bi-arrow-repeat"></i> <span id="syncText">同步数据</span>
+  </button>
+</div>
+
+<!-- 概览卡片 -->
+<div class="row g-3 mb-4" id="overviewCards">
+  <div class="col-md-3">
+    <div class="card overview-card p-3">
+      <div class="d-flex align-items-center">
+        <div class="icon-circle bg-danger bg-opacity-10 text-danger me-3"><i class="bi bi-currency-dollar"></i></div>
+        <div>
+          <small class="text-muted d-block">总销售额</small>
+          <span class="stat-number" id="totalRevenue">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card overview-card p-3">
+      <div class="d-flex align-items-center">
+        <div class="icon-circle bg-primary bg-opacity-10 text-primary me-3"><i class="bi bi-cart-check"></i></div>
+        <div>
+          <small class="text-muted d-block">总订单数</small>
+          <span class="stat-number" id="totalOrders">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card overview-card p-3">
+      <div class="d-flex align-items-center">
+        <div class="icon-circle bg-warning bg-opacity-10 text-warning me-3"><i class="bi bi-receipt"></i></div>
+        <div>
+          <small class="text-muted d-block">平均客单价</small>
+          <span class="stat-number" id="avgOrderValue">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card overview-card p-3">
+      <div class="d-flex align-items-center">
+        <div class="icon-circle bg-success bg-opacity-10 text-success me-3"><i class="bi bi-fire"></i></div>
+        <div>
+          <small class="text-muted d-block">爆款数量</small>
+          <span class="stat-number" id="hitCount">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <!-- 趋势图 -->
+  <div class="col-lg-8">
+    <div class="card overview-card p-3">
+      <h6 class="mb-3"><i class="bi bi-graph-up-arrow"></i> 最近 30 天销售趋势</h6>
+      <div class="chart-container">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 平台分布 -->
+  <div class="col-lg-4">
+    <div class="card overview-card p-3 h-100">
+      <h6 class="mb-3"><i class="bi bi-pie-chart"></i> 平台销售额分布</h6>
+      <div id="platformDist">
+        <div class="text-muted text-center py-4">加载中...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 设计排行榜 -->
+<div class="card overview-card">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center" style="border-radius:16px 16px 0 0; border-bottom:1px solid #eee;">
+    <h6 class="mb-0"><i class="bi bi-trophy"></i> 设计销售排行榜</h6>
+    <small class="text-muted">按销售额降序</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:60px;">排名</th>
+          <th>设计名称</th>
+          <th>销量</th>
+          <th>销售额</th>
+          <th>利润率</th>
+          <th>是否爆款</th>
+        </tr>
+      </thead>
+      <tbody id="designRankBody">
+        <tr><td colspan="6" class="text-center text-muted py-4">暂无数据，请先同步</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let trendChart = null;
+
+// ── 格式化货币 ──
+function fmtUSD(v) { return '$' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// ── 加载总览 ──
+async function loadOverview() {
+  try {
+    const r = await api.get('/analytics/overview');
+    const d = r.data.data;
+    document.getElementById('totalRevenue').textContent = fmtUSD(d.total_revenue);
+    document.getElementById('totalOrders').textContent = (d.total_orders || 0).toLocaleString();
+    document.getElementById('avgOrderValue').textContent = fmtUSD(d.avg_order_value);
+    document.getElementById('hitCount').textContent = d.hit_products || 0;
+  } catch (e) {
+    ['totalRevenue','totalOrders','avgOrderValue','hitCount'].forEach(id => document.getElementById(id).textContent = '--');
+  }
+}
+
+// ── 加载趋势图 ──
+async function loadTrends() {
+  try {
+    const r = await api.get('/analytics/trends');
+    const data = r.data.data;
+    const labels = data.map(d => d.date.substring(5)); // MM-DD
+    const revenues = data.map(d => d.revenue);
+    const orders = data.map(d => d.orders);
+
+    if (trendChart) trendChart.destroy();
+
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '销售额 (USD)',
+          data: revenues,
+          borderColor: '#c41e3a',
+          backgroundColor: 'rgba(196,30,58,0.05)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          yAxisID: 'y',
+        }, {
+          label: '订单数',
+          data: orders,
+          borderColor: '#0d6efd',
+          backgroundColor: 'rgba(13,110,253,0.05)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          yAxisID: 'y1',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { usePointStyle: true, padding: 20 } }
+        },
+        scales: {
+          y: {
+            type: 'linear', position: 'left',
+            title: { display: true, text: '销售额 (USD)' },
+            ticks: { callback: v => '$' + v }
+          },
+          y1: {
+            type: 'linear', position: 'right',
+            title: { display: true, text: '订单数' },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+  } catch (e) {
+    document.querySelector('.chart-container').innerHTML = '<div class="text-muted text-center py-5">暂无趋势数据</div>';
+  }
+}
+
+// ── 加载平台分布 ──
+async function loadPlatformDist() {
+  try {
+    const r = await api.get('/analytics/platforms');
+    const data = r.data.data;
+    if (data.length === 0) {
+      document.getElementById('platformDist').innerHTML = '<div class="text-muted text-center py-4">暂无平台数据</div>';
+      return;
+    }
+    const colors = { tiktok: '#000', shopify: '#96bf48', amazon: '#ff9900', shopee: '#ee4d2d', lazada: '#0f1568', etsy: '#f56400' };
+    document.getElementById('platformDist').innerHTML = data.map(d => {
+      const color = colors[d.platform] || '#6c757d';
+      return `
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="fw-semibold text-capitalize">${d.platform}</span>
+            <span>${fmtUSD(d.total_revenue)} (${d.share}%)</span>
+          </div>
+          <div class="progress" style="height:8px; border-radius:4px;">
+            <div class="progress-bar" style="width:${d.share}%; background-color:${color};"></div>
+          </div>
+          <small class="text-muted">${d.total_orders} 单</small>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('platformDist').innerHTML = '<div class="text-danger text-center py-2">加载失败</div>';
+  }
+}
+
+// ── 加载设计排行榜 ──
+async function loadDesignRank() {
+  try {
+    const r = await api.get('/analytics/designs');
+    const data = r.data.data;
+    if (data.length === 0) {
+      document.getElementById('designRankBody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无数据，请先同步</td></tr>';
+      return;
+    }
+    document.getElementById('designRankBody').innerHTML = data.map(d => `
+      <tr>
+        <td class="text-center fw-bold">${d.rank <= 3 ? '🏆'.repeat(d.rank===1?3:d.rank===2?2:1) : '#' + d.rank}</td>
+        <td class="fw-semibold">${d.design_title || d.design_id?.substring(0,8)}</td>
+        <td>${d.total_orders}</td>
+        <td>${fmtUSD(d.total_revenue)}</td>
+        <td><span class="${d.margin >= 30 ? 'text-success fw-bold' : d.margin >= 0 ? '' : 'text-danger'}">${d.margin}%</span></td>
+        <td>${d.is_hit ? '<span class="badge bg-danger">🔥 爆款</span>' : '<span class="badge bg-light text-dark">普通</span>'}</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    document.getElementById('designRankBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-2">加载失败</td></tr>';
+  }
+}
+
+// ── 同步数据 ──
+async function syncData() {
+  const btn = document.getElementById('btnSync');
+  const text = document.getElementById('syncText');
+  btn.disabled = true;
+  text.textContent = '同步中...';
+  try {
+    const r = await api.post('/analytics/sync');
+    const count = r.data.data.records_created;
+    alert(`同步完成，已生成 ${count} 条销售记录`);
+    loadAll();
+  } catch (e) {
+    alert('同步失败: ' + (e.response?.data?.detail || e.message));
+  } finally {
+    btn.disabled = false;
+    text.textContent = '同步数据';
+  }
+}
+
+// ── 批量加载 ──
+function loadAll() {
+  loadOverview();
+  loadTrends();
+  loadPlatformDist();
+  loadDesignRank();
+}
+
+loadAll();
+</script>
+{% endblock %}

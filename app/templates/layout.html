@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}一键排版 — RiiChain{% endblock %}
+{% block content %}
+<h2 class="mb-3">🧩 一键排版 <small class="text-muted fs-6">Layout Engine</small></h2>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card p-3"><h5>排版参数</h5>
+            <div class="mb-3"><label class="form-label">板材尺寸</label><select class="form-select" id="board-size"><option value="480x480">480×480mm (标准)</option><option value="600x600">600×600mm (大板)</option><option value="300x400">300×400mm (小板)</option></select></div>
+            <div class="mb-3"><label class="form-label">订单数据 (JSON)</label><textarea class="form-control" id="layout-input" rows="8" placeholder='[{"order_no":"OBS001","skus":[{"sku":"A","qty":2,"w":120,"h":80}]}]'>[{"order_no":"OBS001","skus":[{"sku":"DesignA","qty":2,"w":120,"h":80}]},{"order_no":"OBS002","skus":[{"sku":"DesignB","qty":1,"w":100,"h":150}]}]</textarea></div>
+            <button class="btn btn-primary" onclick="runLayout()">🚀 执行排版</button>
+        </div>
+        <div class="card p-3 mt-3" id="result-card" style="display:none;">
+            <h5>排版结果 <span id="engine-badge"></span></h5>
+            <div id="layout-summary" class="mb-2"></div>
+            <div id="layout-detail"></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3"><h5>📐 支持的板材</h5>
+            <ul class="list-group list-group-flush small">
+                <li class="list-group-item"><b>480×480mm</b> — 标准板，最常用</li>
+                <li class="list-group-item"><b>600×600mm</b> — 大板，适合大批量</li>
+                <li class="list-group-item"><b>300×400mm</b> — 小板，适合小件</li>
+            </ul>
+        </div>
+        <div class="card p-3 mt-3"><h5>💡 使用说明</h5>
+            <p class="small text-muted">输入订单的 SKU + 尺寸 + 数量（JSON 格式），系统自动计算最优排版方案。支持 pyckingsolver 专业嵌套算法和贪心降级方案。</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function runLayout() {
+    const boardSize = document.getElementById('board-size').value;
+    let orders;
+    try { orders = JSON.parse(document.getElementById('layout-input').value); }
+    catch(e) { alert('JSON 格式错误'); return; }
+    const res = await api.post('/layout/optimize', {orders, board_size: boardSize});
+    const r = res.data;
+    document.getElementById('result-card').style.display = 'block';
+    document.getElementById('engine-badge').innerHTML = `<span class="badge bg-${r.engine==='pyckingsolver'?'success':'warning'}">${r.engine}</span>`;
+    document.getElementById('layout-summary').innerHTML = `<b>总板数:</b> ${r.total_boards} | <b>利用率:</b> ${(r.overall_utilization*100).toFixed(1)}% | <b>浪费:</b> ${r.waste_area_sqmm}mm² | <b>拆分订单:</b> ${r.split_count}`;
+    document.getElementById('layout-detail').innerHTML = r.boards.map(b => `
+        <div class="card mb-2"><div class="card-body py-2"><b>${b.name}</b> — 填充率: ${(b.fill_rate*100).toFixed(1)}% | SKU: ${b.sku_count} | 订单: ${b.order_count}
+        <ul class="small mb-0 mt-1">${b.placements.map(p => `<li>${p.sku} (${p.order_no}) → (${p.x},${p.y}) ${p.w}×${p.h} ${p.rotated?'🔄':''}</li>`).join('')}</ul></div></div>`).join('');
+}
+</script>
+{% endblock %}

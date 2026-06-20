@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}RiiChain — 仪表盘{% endblock %}
+
+{% block content %}
+<div class="px-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">🀄 RiiChain 仪表盘</h2>
+            <p class="text-muted mb-0">POD 全链路系统 — 今天是 {{ today }}</p>
+        </div>
+        <div>
+            <a href="/designs" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> 上传设计
+            </a>
+        </div>
+    </div>
+
+    <!-- 核心指标卡片 -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">设计库</div>
+                    <div class="stat-number" id="cnt-designs">—</div>
+                    <div class="small text-muted mt-1">个设计</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">待处理订单</div>
+                    <div class="stat-number" id="cnt-orders" style="color:#e67e22;">—</div>
+                    <div class="small text-muted mt-1">笔订单</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">待排版 Wave</div>
+                    <div class="stat-number" id="cnt-waves" style="color:#3498db;">—</div>
+                    <div class="small text-muted mt-1">个波次</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">本月销售额</div>
+                    <div class="stat-number" style="color:#27ae60;">$<span id="cnt-revenue">—</span></div>
+                    <div class="small text-muted mt-1">USD</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 六大模块快捷入口 -->
+    <h5 class="fw-bold mb-3">核心模块</h5>
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #c41e3a !important;">
+                <div class="card-body">
+                    <h6 class="fw-bold"><i class="bi bi-palette me-2" style="color:#c41e3a;"></i>Design Hub</h6>
+                    <p class="text-muted small mb-2">设计管理 · Mockup 生成 · 状态流转</p>
+                    <a href="/designs" class="btn btn-sm btn-outline-danger">进入模块</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #e67e22 !important;">
+                <div class="card-body">
+                    <h6 class="fw-bold"><i class="bi bi-rocket-takeoff me-2" style="color:#e67e22;"></i>Listing Engine</h6>
+                    <p class="text-muted small mb-2">一键铺货 · TikTok/Shopify 多平台发布</p>
+                    <a href="/listing" class="btn btn-sm btn-outline-warning">进入模块</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #3498db !important;">
+                <div class="card-body">
+                    <h6 class="fw-bold"><i class="bi bi-cart me-2" style="color:#3498db;"></i>订单管理</h6>
+                    <p class="text-muted small mb-2">订单路由 · 四维度评分 · 状态跟踪</p>
+                    <a href="/orders" class="btn btn-sm btn-outline-primary">进入模块</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #9b59b6 !important;">
+                <div class="card-body">
+                    <h6 class="fw-bold"><i class="bi bi-grid-3x3 me-2" style="color:#9b59b6;"></i>一键排版</h6>
+                    <p class="text-muted small mb-2">pyckingsolver · 板材利用率优化</p>
+                    <a href="/layout" class="btn btn-sm btn-outline-secondary">进入模块</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #27ae60 !important;">
+                <div class="card-body">
+                    <h6 class="fw-bold"><i class="bi bi-layer-stack me-2" style="color:#27ae60;"></i>波次履约</h6>
+                    <p class="text-muted small mb-2">一板一波次 · 分货 · 打包发货</p>
+                    <a href="/wave" class="btn btn-sm btn-outline-success">进入模块</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #e74c3c !important;">
+                <div class="card-body">
+                    <h6 class="fw-bold"><i class="bi bi-graph-up me-2" style="color:#e74c3c;"></i>销售分析</h6>
+                    <p class="text-muted small mb-2">爆款识别 · ROI 分析 · 趋势预测</p>
+                    <a href="/analytics" class="btn btn-sm btn-outline-danger">进入模块</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统状态 -->
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom fw-bold">📦 生产进度</div>
+                <div class="card-body small text-muted">
+                    <p>暂无数据，请先导入订单...</p>
+                    <a href="/wave" class="btn btn-sm btn-outline-primary mt-2">去导入订单</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom fw-bold">🏭 印刷厂状态</div>
+                <div class="card-body small text-muted">
+                    <p>暂无印刷厂数据，请先添加...</p>
+                    <a href="/facilities" class="btn btn-sm btn-outline-primary mt-2">去添加印刷厂</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // 加载仪表盘数据（Stub，暂用占位）
+    api.get('/designs?limit=1').then(r => {
+        document.getElementById('cnt-designs').textContent = r.data.total || 0;
+    }).catch(() => {});
+
+    api.get('/orders?limit=1').then(r => {
+        document.getElementById('cnt-orders').textContent = r.data.total || 0;
+    }).catch(() => {});
+
+    api.get('/wave/imports?limit=1').then(r => {
+        document.getElementById('cnt-waves').textContent = r.data.total || 0;
+    }).catch(() => {});
+});
+</script>
+{% endblock %}

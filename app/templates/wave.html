@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block title %}波次履约 — RiiChain{% endblock %}
+
+{% block extra_css %}
+<style>
+  .wave-status-badge {
+    font-size: 0.78rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+  .status-待确认  { background: #fff3cd; color: #856404; }
+  .status-已确认  { background: #d1e7dd; color: #0f5132; }
+  .status-已排版  { background: #cff4fc; color: #055160; }
+  .status-已打印  { background: #d3d3ff; color: #3b0fd6; }
+  .status-已分货  { background: #c1e1c5; color: #155724; }
+
+  .order-status-badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+  }
+  .os-待处理   { background: #f0f0f0; color: #555; }
+  .os-待创波次 { background: #fff3cd; color: #856404; }
+  .os-待打印   { background: #cff4fc; color: #055160; }
+  .os-待分货   { background: #fde2e2; color: #842029; }
+  .os-已分货   { background: #d1e7dd; color: #0f5132; }
+  .os-已发货   { background: #6c757d; color: #fff; }
+
+  .import-row { cursor: pointer; transition: background 0.15s; }
+  .import-row:hover { background: #ffeef2; }
+  .import-row.expanded { background: #fff8f0; }
+
+  .orders-collapse { background: #f8f9fa; }
+  .orders-collapse .table { font-size: 0.85rem; margin-bottom: 0; }
+
+  .material-card {
+    border-radius: 12px;
+    border: 1.5px solid #eee;
+    transition: border-color 0.2s;
+  }
+  .material-card.low-stock {
+    border-color: #dc3545;
+    background: #fff5f5;
+  }
+  .material-qty { font-size: 1.6rem; font-weight: 700; color: #c41e3a; }
+  .material-qty.ok { color: #198754; }
+
+  .tab-filter .nav-link { border-radius: 20px; padding: 4px 16px; font-size: 0.88rem; }
+  .tab-filter .nav-link.active { background: #c41e3a; color: #fff; border-color: #c41e3a; }
+
+  .upload-zone {
+    border: 2px dashed #c41e3a;
+    border-radius: 12px;
+    padding: 24px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .upload-zone:hover { background: #ffeef2; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="fw-bold mb-1"><i class="bi bi-layer-stack me-2" style="color:#c41e3a;"></i>波次履约</h4>
+    <p class="text-muted mb-0" style="font-size:0.9rem;">管理亚克力板波次导入、生产进度与耗材库存</p>
+  </div>
+  <button class="btn btn-danger" onclick="openUploadModal()">
+    <i class="bi bi-cloud-upload me-1"></i> 导入 Excel
+  </button>
+</div>
+
+<!-- 耗材库存卡片区 -->
+<div class="card mb-4 border-0 shadow-sm">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-boxes me-2 text-danger"></i>亚克力板库存</h6>
+      <button class="btn btn-sm btn-outline-secondary" onclick="loadMaterials()">
+        <i class="bi bi-arrow-clockwise"></i> 刷新
+      </button>
+    </div>
+    <div id="materials-row" class="row g-3">
+      <div class="col-12 text-center text-muted py-3">
+        <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 状态筛选 tabs -->
+<div class="d-flex align-items-center gap-3 mb-3">
+  <ul class="nav tab-filter gap-1" id="status-tabs">
+    <li class="nav-item"><a class="nav-link active" href="#" data-status="">全部</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-status="待确认">待确认</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-status="已确认">已确认</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-status="已排版">已排版</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-status="已打印">已打印</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-status="已分货">已分货</a></li>
+  </ul>
+  <div class="ms-auto text-muted" style="font-size:0.85rem;" id="total-hint"></div>
+</div>
+
+<!-- 导入批次主列表 -->
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:36px;"></th>
+          <th>文件名</th>
+          <th>导入时间</th>
+          <th class="text-center">波次数</th>
+          <th class="text-center">订单数</th>
+          <th class="text-center">SKU 数</th>
+          <th class="text-center">状态</th>
+          <th class="text-center">操作</th>
+        </tr>
+      </thead>
+      <tbody id="imports-body">
+        <tr><td colspan="8" class="text-center text-muted py-4">
+          <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 上传 Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2 text-danger"></i>导入波次 Excel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="upload-zone mb-3" id="drop-zone" onclick="document.getElementById('excel-input').click()">
+          <i class="bi bi-file-earmark-excel text-success" style="font-size:2.5rem;"></i>
+          <div class="mt-2 fw-semibold">点击或拖拽 Excel 文件到此处</div>
+          <div class="text-muted" style="font-size:0.85rem;">支持 .xlsx / .xls</div>
+        </div>
+        <input type="file" id="excel-input" accept=".xlsx,.xls" class="d-none">
+        <div id="file-info" class="alert alert-info d-none py-2"></div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">所属租户</label>
+          <input type="text" class="form-control form-control-sm" id="tenant-id" value="default" placeholder="default">
+        </div>
+        <div class="text-muted" style="font-size:0.82rem;">
+          <b>列对应：</b>订单号 / 波次号 / 快递单号 / SKU / 数量 / 产品类型 / 下单日期 / 发货日期
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-danger" id="upload-btn" onclick="doUpload()" disabled>
+          <i class="bi bi-upload me-1"></i> 开始上传
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const STATUS_COLORS = {
+  '待确认': 'status-待确认',
+  '已确认': 'status-已确认',
+  '已排版': 'status-已排版',
+  '已打印': 'status-已打印',
+  '已分货': 'status-已分货',
+};
+
+const ORDER_STATUS_COLORS = {
+  '待处理': 'os-待处理',
+  '待创波次': 'os-待创波次',
+  '待打印': 'os-待打印',
+  '待分货': 'os-待分货',
+  '已分货': 'os-已分货',
+  '已发货': 'os-已发货',
+};
+
+let currentStatus = '';
+let uploadModal;
+let selectedFile = null;
+
+// ── 初始化 ────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  uploadModal = new bootstrap.Modal(document.getElementById('uploadModal'));
+  loadImports();
+  loadMaterials();
+
+  // status tabs
+  document.querySelectorAll('#status-tabs .nav-link').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      document.querySelectorAll('#status-tabs .nav-link').forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
+      currentStatus = link.dataset.status;
+      loadImports();
+    });
+  });
+
+  // 文件选择
+  document.getElementById('excel-input').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) selectFile(f);
+  });
+
+  // 拖拽
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background = '#ffeef2'; });
+  dz.addEventListener('dragleave', () => { dz.style.background = ''; });
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.style.background = '';
+    const f = e.dataTransfer.files[0];
+    if (f) selectFile(f);
+  });
+});
+
+function selectFile(f) {
+  selectedFile = f;
+  const info = document.getElementById('file-info');
+  info.textContent = `已选择：${f.name}（${(f.size / 1024).toFixed(1)} KB）`;
+  info.classList.remove('d-none');
+  document.getElementById('upload-btn').disabled = false;
+}
+
+// ── 加载导入批次 ──────────────────────────────────────
+async function loadImports() {
+  const tbody = document.getElementById('imports-body');
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</td></tr>';
+  try {
+    const params = currentStatus ? `?status=${encodeURIComponent(currentStatus)}` : '';
+    const res = await api.get(`/wave/imports${params}`);
+    const { data, total } = res.data;
+    document.getElementById('total-hint').textContent = `共 ${total} 条`;
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-5"><i class="bi bi-inbox fs-2 d-block mb-2"></i>暂无数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(imp => `
+      <tr class="import-row" id="row-${imp.id}" onclick="toggleOrders('${imp.id}')">
+        <td class="text-center">
+          <i class="bi bi-chevron-right text-muted toggle-icon" id="icon-${imp.id}"></i>
+        </td>
+        <td>
+          <i class="bi bi-file-earmark-excel text-success me-2"></i>
+          <span class="fw-semibold">${escHtml(imp.filename)}</span>
+        </td>
+        <td class="text-muted" style="font-size:0.85rem;">${imp.created_at}</td>
+        <td class="text-center"><span class="badge bg-primary">${imp.total_waves}</span></td>
+        <td class="text-center">${imp.total_orders}</td>
+        <td class="text-center">${imp.total_skus}</td>
+        <td class="text-center">
+          <span class="wave-status-badge ${STATUS_COLORS[imp.status] || ''}">${imp.status}</span>
+        </td>
+        <td class="text-center" onclick="event.stopPropagation()">
+          ${imp.status === '待确认' ? `
+            <button class="btn btn-sm btn-outline-success" onclick="confirmImport('${imp.id}')">
+              <i class="bi bi-check-circle me-1"></i>确认
+            </button>` : ''}
+          <button class="btn btn-sm btn-outline-secondary ms-1" onclick="viewWaves('${imp.id}')">
+            <i class="bi bi-eye"></i>
+          </button>
+        </td>
+      </tr>
+      <tr id="orders-row-${imp.id}" class="d-none">
+        <td colspan="8" class="p-0 orders-collapse">
+          <div id="orders-content-${imp.id}" class="p-3"></div>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">加载失败</td></tr>`;
+  }
+}
+
+// ── 展开/收起订单 ─────────────────────────────────────
+const loadedOrders = {};
+
+async function toggleOrders(importId) {
+  const row = document.getElementById(`orders-row-${importId}`);
+  const icon = document.getElementById(`icon-${importId}`);
+  const headerRow = document.getElementById(`row-${importId}`);
+  const isHidden = row.classList.contains('d-none');
+
+  // 收起其他展开的行
+  document.querySelectorAll('[id^="orders-row-"]').forEach(r => r.classList.add('d-none'));
+  document.querySelectorAll('[id^="icon-"]').forEach(ic => {
+    ic.classList.remove('bi-chevron-down');
+    ic.classList.add('bi-chevron-right');
+  });
+  document.querySelectorAll('.import-row').forEach(r => r.classList.remove('expanded'));
+
+  if (!isHidden) return; // 点击已展开的行 → 收起
+
+  row.classList.remove('d-none');
+  icon.classList.remove('bi-chevron-right');
+  icon.classList.add('bi-chevron-down');
+  headerRow.classList.add('expanded');
+
+  const content = document.getElementById(`orders-content-${importId}`);
+  if (loadedOrders[importId]) {
+    content.innerHTML = loadedOrders[importId];
+    return;
+  }
+  content.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载订单...</div>';
+  try {
+    const res = await api.get(`/wave/orders?limit=500`);
+    const allOrders = res.data.data;
+    // 根据 import_id 过滤（后端没有按 import_id 过滤的参数，前端过滤）
+    // 注意：WaveOrder 没有 import_id 字段返回，所以加载该批次所有波次的订单
+    // 先获取该 import 的波次列表，再过滤
+    const importRow = document.querySelector(`#row-${importId}`);
+    const html = renderOrdersTable(allOrders, importId);
+    loadedOrders[importId] = html;
+    content.innerHTML = html;
+  } catch(e) {
+    content.innerHTML = '<div class="text-danger p-3">加载失败</div>';
+  }
+}
+
+async function viewWaves(importId) {
+  const content = document.getElementById(`orders-content-${importId}`);
+  const row = document.getElementById(`orders-row-${importId}`);
+  row.classList.remove('d-none');
+  content.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>加载订单...</div>';
+
+  try {
+    // 获取该 import 下所有 wave_no（通过全量订单过滤）
+    const res = await api.get(`/wave/orders?limit=1000`);
+    const orders = res.data.data;
+    const html = renderOrdersTable(orders, importId);
+    content.innerHTML = html;
+    loadedOrders[importId] = html;
+  } catch(e) {
+    content.innerHTML = '<div class="text-danger p-3">加载失败</div>';
+  }
+}
+
+function renderOrdersTable(orders, importId) {
+  if (!orders.length) return '<div class="text-muted p-3 text-center">暂无订单</div>';
+
+  // 按 wave_no 分组
+  const waveMap = {};
+  orders.forEach(o => {
+    if (!waveMap[o.wave_no]) waveMap[o.wave_no] = [];
+    waveMap[o.wave_no].push(o);
+  });
+
+  const waveNos = Object.keys(waveMap).sort();
+  if (!waveNos.length) return '<div class="text-muted p-3 text-center">暂无订单</div>';
+
+  let html = `
+    <div style="max-height:400px; overflow-y:auto;">
+      <table class="table table-sm table-hover table-bordered">
+        <thead class="table-dark" style="position:sticky;top:0;">
+          <tr>
+            <th>波次号</th>
+            <th>订单号</th>
+            <th>SKU</th>
+            <th class="text-center">数量</th>
+            <th>产品类型</th>
+            <th>快递单号</th>
+            <th class="text-center">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  waveNos.forEach(wn => {
+    const wOrders = waveMap[wn];
+    wOrders.forEach((o, i) => {
+      html += `<tr>
+        ${i === 0 ? `<td rowspan="${wOrders.length}" class="fw-semibold align-middle text-primary">${escHtml(wn)}</td>` : ''}
+        <td>${escHtml(o.order_no)}</td>
+        <td><code style="font-size:0.8rem;">${escHtml(o.sku_code)}</code></td>
+        <td class="text-center">${o.qty}</td>
+        <td><span class="badge bg-light text-dark border">${escHtml(o.product_type || 'Standard')}</span></td>
+        <td style="font-size:0.8rem;">${escHtml(o.tracking_no || '—')}</td>
+        <td class="text-center">
+          <span class="order-status-badge ${ORDER_STATUS_COLORS[o.status] || ''}">${o.status}</span>
+        </td>
+      </tr>`;
+    });
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// ── 确认导入 ──────────────────────────────────────────
+async function confirmImport(importId) {
+  if (!confirm('确认该批次导入？')) return;
+  try {
+    await api.post(`/wave/imports/${importId}/confirm`);
+    delete loadedOrders[importId];
+    loadImports();
+  } catch(e) {}
+}
+
+// ── 耗材库存 ──────────────────────────────────────────
+async function loadMaterials() {
+  const row = document.getElementById('materials-row');
+  try {
+    const res = await api.get('/wave/materials/list');
+    const mats = res.data.data;
+    if (!mats.length) {
+      row.innerHTML = '<div class="col-12 text-muted text-center py-2">暂无库存记录</div>';
+      return;
+    }
+    row.innerHTML = mats.map(m => `
+      <div class="col-6 col-sm-4 col-md-3 col-xl-2">
+        <div class="material-card p-3 text-center ${m.is_low ? 'low-stock' : ''}">
+          <div class="fw-bold mb-1" style="font-size:0.9rem;">${escHtml(m.board_size)}</div>
+          <div class="material-qty ${m.is_low ? '' : 'ok'}">${m.qty_on_hand}</div>
+          <div class="text-muted" style="font-size:0.75rem;">最低库存: ${m.min_stock}</div>
+          ${m.is_low ? '<div class="mt-1"><span class="badge bg-danger">库存不足</span></div>' : ''}
+          ${m.supplier ? `<div class="text-muted mt-1" style="font-size:0.72rem;">${escHtml(m.supplier)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    row.innerHTML = '<div class="col-12 text-danger text-center py-2">库存加载失败</div>';
+  }
+}
+
+// ── 上传 Modal ────────────────────────────────────────
+function openUploadModal() {
+  selectedFile = null;
+  document.getElementById('file-info').classList.add('d-none');
+  document.getElementById('excel-input').value = '';
+  document.getElementById('upload-btn').disabled = true;
+  uploadModal.show();
+}
+
+async function doUpload() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>上传中...';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  fd.append('tenant_id', document.getElementById('tenant-id').value || 'default');
+
+  try {
+    const res = await axios.post('/api/v1/wave/imports/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+    const d = res.data;
+    uploadModal.hide();
+    delete Object.keys(loadedOrders).forEach(k => delete loadedOrders[k]);
+    loadImports();
+    loadMaterials();
+    showToast(`导入成功：${d.total_rows} 行，${d.total_waves} 个波次`, 'success');
+  } catch(e) {
+    showToast(e.response?.data?.detail || e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-upload me-1"></i> 开始上传';
+  }
+}
+
+// ── 工具函数 ──────────────────────────────────────────
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.createElement('div');
+  t.className = `alert alert-${type} position-fixed shadow`;
+  t.style.cssText = 'top:20px;right:20px;z-index:9999;min-width:260px;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+</script>
+{% endblock %}
