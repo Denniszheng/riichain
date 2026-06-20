@@ -23,9 +23,41 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="fw-bold mb-0"><i class="bi bi-cart me-2" style="color:var(--primary);"></i>订单管理</h4>
   <div class="d-flex gap-2">
+    <button class="btn btn-sm btn-outline-primary" onclick="showSyncModal()">🔄 从WMS同步</button>
+    <button class="btn btn-sm btn-outline-success" onclick="syncDetails()">📦 获取详情</button>
     <input type="file" id="excel-upload" accept=".xlsx,.xls" style="display:none;" onchange="uploadExcel(this)">
     <button class="btn btn-sm btn-outline-danger" onclick="document.getElementById('excel-upload').click()">📥 导入Excel</button>
     <span id="upload-status" class="small text-muted"></span>
+  </div>
+</div>
+
+<!-- Sync Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header"><h6 class="modal-title">从领星WMS同步订单</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">同步日期</label>
+          <input type="date" id="sync-date" class="form-control form-control-sm">
+          <div class="form-text small">留空则同步今天的订单</div>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="sync-overwrite">
+          <label class="form-check-label small" for="sync-overwrite">覆盖已存在的订单</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="sync-fetch-details">
+          <label class="form-check-label small" for="sync-fetch-details">同步后自动获取订单详情（SKU、物流信息）</label>
+          <div class="form-text small text-warning">⚠️ 每个订单都会发起一次API调用，可能较慢</div>
+        </div>
+        <div id="sync-result" class="small"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="syncFromWMS()">开始同步</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -145,6 +177,73 @@ async function uploadExcel(input){
     loadKPI();loadOrders();
   }catch(e){st.textContent='❌ '+e.message;}
   input.value='';
+}
+
+function showSyncModal(){
+  var modal=new bootstrap.Modal(document.getElementById('syncModal'));
+  var today=new Date().toISOString().split('T')[0];
+  document.getElementById('sync-date').value=today;
+  document.getElementById('sync-result').innerHTML='';
+  modal.show();
+}
+
+async function syncFromWMS(){
+  var date=document.getElementById('sync-date').value;
+  var overwrite=document.getElementById('sync-overwrite').checked;
+  var fetchDetails=document.getElementById('sync-fetch-details').checked;
+  var resultDiv=document.getElementById('sync-result');
+  resultDiv.innerHTML='<span class="text-primary">⏳ 同步中...</span>';
+  try{
+    var r=await fetch('/api/v1/orders/wms/sync-delivery',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date:date,overwrite:overwrite,fetch_details:fetchDetails})
+    });
+    var d=await r.json();
+    if(d.code===0){
+      var data=d.data||{};
+      resultDiv.innerHTML='<span class="text-success">✅ '+d.msg+'</span>'+
+        '<br><small class="text-muted">跳过 '+data.skipped_orders+' 个已存在的订单</small>'+
+        (data.errors&&data.errors.length?'<br><small class="text-danger">'+data.errors.length+' 个错误</small>':'');
+      setTimeout(function(){loadKPI();loadOrders();},1000);
+    }else{
+      resultDiv.innerHTML='<span class="text-danger">❌ '+d.msg+'</span>';
+    }
+  }catch(e){
+    resultDiv.innerHTML='<span class="text-danger">❌ '+e.message+'</span>';
+  }
+}
+
+async function syncDetails(){
+  if(!confirm('确定要获取订单详情吗？\n\n这将为所有没有SKU信息的订单调用WMS API获取详情（SKU列表、物流信息）。\n\n每个订单都会发起一次API调用，可能需要一些时间。')){
+    return;
+  }
+  
+  var btn=event.target;
+  var originalText=btn.innerHTML;
+  btn.innerHTML='⏳ 获取中...';
+  btn.disabled=true;
+  
+  try{
+    var r=await fetch('/api/v1/orders/wms/sync-delivery-details',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({})
+    });
+    var d=await r.json();
+    if(d.code===0){
+      var data=d.data||{};
+      alert('✅ '+d.msg+'\n\n同步详情：\n- '+data.synced_orders+'个订单\n- '+data.synced_skus+'个SKU'+(data.errors&&data.errors.length?'\n- '+data.errors.length+'个错误':'));
+      loadKPI();loadOrders();
+    }else{
+      alert('❌ '+d.msg);
+    }
+  }catch(e){
+    alert('❌ '+e.message);
+  }finally{
+    btn.innerHTML=originalText;
+    btn.disabled=false;
+  }
 }
 </script>
 {% endblock %}

@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     SHOPIFY_CLIENT_SECRET: str | None = None
     SHOPIFY_REDIRECT_URI: str | None = None
 
+    # 领星 WMS 对接
+    WMS_APP_KEY: str = "60d2da562ee3492e8bdaaea44c611910"
+    WMS_SECRET: str = "e7f3e07d4f15438da02308fa1ebf90be"
+    WMS_BASE_URL: str = "https://api.xlwms.com"
+    WMS_WH_CODE: str = "TXMISSOURI"  # 仓库代码
+
     # 安全
     SECRET_KEY: str = "riichain-secret-key-change-in-production"
     ALGORITHM: str = "HS256"

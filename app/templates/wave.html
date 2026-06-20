@@ -112,7 +112,7 @@ async function searchWave() {
       body:JSON.stringify({waveNo:input})
     });
     var data = await r.json();
-    if (data.code!==0) { alert(data.msg||'查询失败'); document.getElementById('import-status').textContent=''; return; }
+    if (data.code !== 0) { alert(data.msg||'查询失败'); document.getElementById('import-status').textContent=''; return; }
     var details = data.data.details||[];
     if (!details.length) {
       document.getElementById('import-status').textContent='';

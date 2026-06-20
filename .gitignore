@@ -4,3 +4,7 @@ __pycache__/
 .env
 data/
 .vscode/
+alter_*.py
+check_*.py
+debug_*.py
+migrate_*.py

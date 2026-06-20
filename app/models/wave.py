@@ -30,8 +30,8 @@ class WaveOrder(Base, UUIDMixin, TimestampMixin):
     """Excel 中的一行 = 一个 WaveOrder（一块亚克力板上的一个 SKU 订单）"""
     __tablename__ = "wave_orders"
 
-    import_id: Mapped[str] = mapped_column(String(36), ForeignKey("wave_imports.id"), index=True)
-    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), index=True)
+    import_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("wave_imports.id"), index=True, nullable=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tenants.id"), index=True, nullable=True)
 
     order_no: Mapped[str] = mapped_column(String(100), index=True)
     wave_no: Mapped[str] = mapped_column(String(100), index=True)   # 一块板 = 一个 wave_no
