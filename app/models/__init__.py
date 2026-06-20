@@ -8,7 +8,6 @@ from app.models.order import Order, OrderItem, OrderRouting
 from app.models.print_job import PrintJob
 from app.models.wave import WaveImport, WaveOrder, MaterialInventory, StockTransaction
 from app.models.shipping import ShippingLabel
-from app.models.facility import Facility, FacilityCapacity
 from app.models.platform_account import PlatformAccount
 from app.models.listing_job import ListingJob
 from app.models.analytics import SalesRecord, HitProduct, DesignAnalytics
@@ -28,8 +27,6 @@ __all__ = [
     "WaveImport", "WaveOrder", "MaterialInventory", "StockTransaction",
     # Shipping
     "ShippingLabel",
-    # Facility
-    "Facility", "FacilityCapacity",
     # Platform
     "PlatformAccount",
     # Listing

@@ -56,7 +56,6 @@ router_registry = [
     ("app.api.v1.wave",       "/api/v1/wave",       "Wave & Fulfillment"),
     ("app.api.v1.analytics",  "/api/v1/analytics",  "Analytics"),
     ("app.api.v1.platforms",  "/api/v1/platforms",  "Platform Accounts"),
-    ("app.api.v1.facilities", "/api/v1/facilities", "Facilities"),
 ]
 
 for module_path, prefix, label in router_registry:
@@ -103,10 +102,6 @@ async def page_wave(request: Request):
 @app.get("/analytics", response_class=HTMLResponse)
 async def page_analytics(request: Request):
     return render_template("analytics.html", request)
-
-@app.get("/facilities", response_class=HTMLResponse)
-async def page_facilities(request: Request):
-    return render_template("facilities.html", request)
 
 
 # ── Health Check ─────────────────────────────────────────────────
