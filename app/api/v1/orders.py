@@ -7,7 +7,6 @@ from sqlalchemy.orm import joinedload
 
 from app.core.database import SessionLocal
 from app.models.order import Order, OrderItem, OrderRouting
-from app.models.facility import Facility
 
 router = APIRouter()
 
@@ -416,66 +415,64 @@ def delivery_kpi():
     
     kpi = {}
     # Use order_no for order counts (wave_orders may have multiple SKUs per order)
-    for row in conn.execute("SELECT custom_status, COUNT(DISTINCT order_no) FROM wave_orders GROUP BY custom_status"):
+    for row in conn.execute("SELECT custom_status, COUNT(DISTINCT outbound_no) FROM delivery_orders GROUP BY custom_status"):
         kpi[row[0]] = row[1]
     
     # Total unique orders
-    total = conn.execute("SELECT COUNT(DISTINCT order_no) FROM wave_orders").fetchone()[0]
+    total = conn.execute("SELECT COUNT(DISTINCT outbound_no) FROM delivery_orders").fetchone()[0]
     kpi["total"] = total
     
     # Available months  
-    months = [r[0] for r in conn.execute("SELECT DISTINCT substr(synced_at, 1, 7) FROM wave_orders WHERE synced_at != '' ORDER BY synced_at DESC").fetchall()]
+    months = [r[0] for r in conn.execute("SELECT DISTINCT substr(order_date, 1, 7) FROM delivery_orders ORDER BY order_date DESC").fetchall()]
     
     conn.close()
     return {"code": 0, "data": {"kpi": kpi, "available_months": months}}
 
 @router.get("/delivery/list")
 def list_delivery_orders(ym: str = "", status: str = "", date_from: str = "", date_to: str = "", page: int = 1, page_size: int = 30):
-    """获取出库单列表（从 wave_orders 查询，支持筛选 + 分页）"""
+    """获取出库单列表（支持筛选 + 分页）"""
     import sqlite3, os, math
     db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data", "riichain.db")
     conn = sqlite3.connect(db_path); conn.row_factory = sqlite3.Row
-    
+
     where = []; params = []
     if ym:
-        where.append("synced_at LIKE ?")
+        where.append("order_date LIKE ?")
         params.append(ym + "%")
     if date_from:
-        where.append("synced_at >= ?")
+        where.append("order_date >= ?")
         params.append(date_from)
     if date_to:
-        where.append("synced_at <= ?")
+        where.append("order_date <= ?")
         params.append(date_to)
     if status:
         where.append("custom_status = ?")
         params.append(status)
-    
+
     w = " WHERE " + " AND ".join(where) if where else ""
-    
-    # Get distinct orders for count
-    count_sql = f"SELECT COUNT(DISTINCT order_no) FROM wave_orders{w}"
+
+    count_sql = f"SELECT COUNT(DISTINCT outbound_no) FROM delivery_orders{w}"
     total = int(conn.execute(count_sql, params).fetchone()[0])
     pages = max(1, math.ceil(total / page_size))
-    
-    # Get page of distinct orders
+
     offset = (page - 1) * page_size
-    sql = f"""SELECT order_no, wave_no, tracking_no, carrier, status, 
-               custom_status, synced_at,
-               COUNT(*) as sku_count, SUM(qty) as total_qty,
-               GROUP_CONCAT(DISTINCT sku_code) as skus
-        FROM wave_orders{w} 
-        GROUP BY order_no 
-        ORDER BY synced_at DESC, order_no 
+    sql = f"""SELECT outbound_no, wave_no, tracking_no, carrier, status,
+               custom_status, order_date,
+               COUNT(*) as sku_count, SUM(outbound_qty) as total_qty,
+               GROUP_CONCAT(DISTINCT product_name) as product_names
+        FROM delivery_orders{w}
+        GROUP BY outbound_no
+        ORDER BY order_date DESC, outbound_no
         LIMIT ? OFFSET ?"""
     rows = conn.execute(sql, params + [page_size, offset]).fetchall()
     orders = [dict(r) for r in rows]
     conn.close()
-    
+
     return {"code": 0, "data": {"orders": orders, "total": total, "page": page, "pages": pages, "page_size": page_size}}
 
 @router.post("/delivery/update-status")
 def update_delivery_status(data: dict):
-    """更新订单自定义状态（从 wave_orders 更新）"""
+    """更新订单自定义状态"""
     import sqlite3, os
     db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data", "riichain.db")
     conn = sqlite3.connect(db_path)
@@ -484,8 +481,8 @@ def update_delivery_status(data: dict):
     if not order_no or not new_status:
         return {"code": -1, "msg": "missing params"}
     
-    # 更新 wave_orders 表
-    conn.execute("UPDATE wave_orders SET custom_status = ? WHERE order_no = ?", (new_status, order_no))
+    # 更新 delivery_orders 表
+    conn.execute("UPDATE delivery_orders SET custom_status = ? WHERE outbound_no = ?", (new_status, order_no))
     updated = conn.total_changes
     conn.commit()
     conn.close()

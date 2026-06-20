@@ -38,7 +38,7 @@ def make_sign(params: dict, path: str, secret: str) -> str:
         - 其他类型直接 str()
         """
         if isinstance(v, dict):
-            # data 内的参数无需排序，使用 {key=value, ...} 格式，逗号后加空格
+            # data 内的参数无需排序，使用 {key=value, key2=value2} 格式，逗号后有空格
             return "{" + ", ".join(f"{k}={iv}" for k, iv in v.items()) + "}"
         return str(v)
 
@@ -337,13 +337,15 @@ def fetch_delivery_page(date_str: str = "", page_no: int = 1, page_size: int = 5
     path = "/openapi/v2/delivery/page"
     
     # 领星WMS API 请求格式（根据官方示例）
+    # 注意：键顺序必须为 size, status, whCode, startTime, endTime, current
+    # 签名算法中 data 内部参数不排序，直接按插入顺序拼接
     data = {
+        "size": page_size,
+        "status": "1,2,3,4,5,6",
         "whCode": wh_code,
-        "status": "1,2,3,4,5,6",  # 同步所有状态的订单
         "startTime": date_str + " 00:00:00",
         "endTime": date_str + " 23:59:59",
-        "current": page_no,   # 注意：领星用 current，不是 pageNo
-        "size": page_size,    # 注意：领星用 size，不是 pageSize
+        "current": page_no,
     }
     
     params = {"appKey": WMS_APP_KEY, "data": data, "timestamp": ts}
