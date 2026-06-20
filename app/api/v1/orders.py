@@ -1,7 +1,7 @@
 """Order Management — 订单管理 API（Order Router 模块）"""
 import uuid
 import random
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
@@ -376,3 +376,159 @@ def wms_wave_detail(req: WMSWaveRequest):
         return result
     except Exception as e:
         return {"code": -1, "msg": str(e), "data": None}
+
+
+class SyncRequest(BaseModel):
+    waveNos: list
+
+@router.post("/wms/sync-orders")
+def sync_orders(req: SyncRequest):
+    """从 WMS 批量同步波次订单到本地数据库"""
+    from app.services.wms_service import sync_waves_to_db
+    try:
+        result = sync_waves_to_db(req.waveNos)
+        return {"code":0, "data": result}
+    except Exception as e:
+        return {"code":-1, "msg": str(e)}
+
+@router.get("/list/synced")
+def list_synced_orders(ym: str = ""):
+    """获取已同步的订单（支持年月筛选 YYYY-MM）"""
+    from app.services.wms_service import get_synced_orders, get_available_months
+    try:
+        if not ym:
+            months = get_available_months()
+            if months: ym = months[0]  # latest month
+        data = get_synced_orders(ym)
+        data["available_months"] = get_available_months()
+        data["current_ym"] = ym
+        return {"code":0, "data": data}
+    except Exception as e:
+        return {"code":-1, "msg": str(e)}
+
+
+@router.get("/delivery/kpi")
+def delivery_kpi():
+    """订单KPI统计：总单量/待处理/已打印/已拣货/已复核/已出库/已取消"""
+    import sqlite3,os
+    db_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),"data","riichain.db")
+    conn=sqlite3.connect(db_path)
+    
+    kpi={}
+    # Use distinct outbound_no for order counts
+    for row in conn.execute("SELECT custom_status, COUNT(DISTINCT outbound_no) FROM delivery_orders GROUP BY custom_status"):
+        kpi[row[0]]=row[1]
+    
+    # Total unique orders
+    total=conn.execute("SELECT COUNT(DISTINCT outbound_no) FROM delivery_orders").fetchone()[0]
+    kpi["total"]=total
+    
+    # Available months  
+    months=[r[0] for r in conn.execute("SELECT DISTINCT substr(order_date,1,7) FROM delivery_orders ORDER BY order_date DESC").fetchall()]
+    
+    conn.close()
+    return {"code":0,"data":{"kpi":kpi,"available_months":months}}
+
+@router.get("/delivery/list")
+def list_delivery_orders(ym: str = "", status: str = "", date_from: str = "", date_to: str = "", page: int = 1, page_size: int = 30):
+    """获取出库单列表（支持年月/状态/日期范围筛选 + 分页）"""
+    import sqlite3,os,math
+    db_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),"data","riichain.db")
+    conn=sqlite3.connect(db_path); conn.row_factory=sqlite3.Row
+    
+    where=[]; params=[]
+    if ym: where.append("order_date LIKE ?"); params.append(ym+"%")
+    if date_from: where.append("order_date >= ?"); params.append(date_from)
+    if date_to: where.append("order_date <= ?"); params.append(date_to)
+    if status: where.append("custom_status = ?"); params.append(status)
+    
+    w=" WHERE "+" AND ".join(where) if where else ""
+    
+    # Get distinct orders for count (not SKU-level duplicates)
+    count_sql=f"SELECT COUNT(DISTINCT outbound_no) FROM delivery_orders{w}"
+    total=int(conn.execute(count_sql,params).fetchone()[0])
+    pages=max(1,math.ceil(total/page_size))
+    
+    # Get page of distinct orders
+    offset=(page-1)*page_size
+    sql=f"""SELECT outbound_no, wave_no, refer_order_no, platform_no, carrier, status, 
+               creation_time, outbound_time, tracking_no, product_type, order_date, custom_status,
+               COUNT(*) as sku_count, SUM(outbound_qty) as total_qty,
+               GROUP_CONCAT(DISTINCT product_name) as product_names
+        FROM delivery_orders{w} 
+        GROUP BY outbound_no 
+        ORDER BY order_date DESC, outbound_no 
+        LIMIT ? OFFSET ?"""
+    rows=conn.execute(sql,params+[page_size,offset]).fetchall()
+    orders=[dict(r) for r in rows]
+    conn.close()
+    
+    return {"code":0,"data":{"orders":orders,"total":total,"page":page,"pages":pages,"page_size":page_size}}
+
+@router.post("/delivery/update-status")
+def update_delivery_status(data: dict):
+    """更新订单自定义状态（面单打印/重置时调用）"""
+    import sqlite3,os
+    db_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),"data","riichain.db")
+    conn=sqlite3.connect(db_path)
+    order_no=data.get("order_no","")
+    new_status=data.get("custom_status","")
+    if not order_no or not new_status: return {"code":-1,"msg":"missing params"}
+    conn.execute("UPDATE delivery_orders SET custom_status=? WHERE outbound_no=?",(new_status,order_no))
+    updated=conn.total_changes; conn.commit(); conn.close()
+    return {"code":0,"data":{"updated":updated,"order_no":order_no,"status":new_status}}
+@router.post("/delivery/upload-excel")
+async def upload_delivery_excel(file: UploadFile = File(...)):
+    db_path=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),"data","riichain.db")
+
+    wb=openpyxl.load_workbook(BytesIO(await file.read()),read_only=True)
+    ws=wb.active
+    headers=[str(c.value or '') for c in next(ws.iter_rows(min_row=1,max_row=1))]
+
+    cols={}
+    for i,h in enumerate(headers):
+        h2=h.lower()
+        if 'outbound order' in h2: cols['outbound_no']=i
+        elif 'wave no' in h2: cols['wave_no']=i
+        elif 'reference order' in h2: cols['refer_order_no']=i
+        elif 'platform number' in h2: cols['platform_no']=i
+        elif 'shipping carrier' in h2: cols['carrier']=i
+        elif h2=='status': cols['status']=i
+        elif 'creation time' in h2: cols['creation_time']=i
+        elif 'outboundtime' in h2 or 'outbound time' in h2: cols['outbound_time']=i
+        elif 'total qty' in h2: cols['total_qty']=i
+        elif 'tracking no' in h2: cols['tracking_no']=i
+        elif h2=='sku': cols['sku']=i
+        elif 'product name' in h2: cols['product_name']=i
+        elif 'product type' in h2: cols['product_type']=i
+        elif 'outbound qty' in h2: cols['outbound_qty']=i
+
+    if 'outbound_no' not in cols: return {"code":-1,"msg":"未找到Outbound Order No列"}
+
+    conn=sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE IF NOT EXISTS delivery_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, outbound_no TEXT, wave_no TEXT, refer_order_no TEXT, platform_no TEXT, carrier TEXT, status TEXT, creation_time TEXT, outbound_time TEXT, total_qty INTEGER, tracking_no TEXT, sku TEXT, product_name TEXT, product_type TEXT, outbound_qty INTEGER, order_date TEXT, synced_at TEXT, custom_status TEXT DEFAULT '')")
+    try: conn.execute("ALTER TABLE delivery_orders ADD COLUMN custom_status TEXT DEFAULT ''")
+    except: pass
+
+    today=time.strftime('%Y-%m-%d %H:%M:%S'); count=0
+    for row in ws.iter_rows(min_row=2,values_only=True):
+        def g(k): v=row[cols[k]] if k in cols and cols[k]<len(row) else ''; return str(v).strip() if v else ''
+        ono=g('outbound_no')
+        if not ono: continue
+        ds=ono[6:12] if len(ono)>=12 else ''
+        od='20'+ds[:2]+'-'+ds[2:4]+'-'+ds[4:6] if ds else ''
+        try:
+            conn.execute("INSERT OR REPLACE INTO delivery_orders (outbound_no,wave_no,refer_order_no,platform_no,carrier,status,creation_time,outbound_time,total_qty,tracking_no,sku,product_name,product_type,outbound_qty,order_date,synced_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ono,g('wave_no'),g('refer_order_no'),g('platform_no'),g('carrier'),g('status'),
+                 g('creation_time'),g('outbound_time'),int(float(g('total_qty')) if g('total_qty') else 0),
+                 g('tracking_no'),g('sku'),g('product_name'),g('product_type'),
+                 int(float(g('outbound_qty')) if g('outbound_qty') else 0),od,today)); count+=1
+        except: pass
+
+    conn.execute("UPDATE delivery_orders SET custom_status='pending' WHERE (wave_no='' OR wave_no IS NULL) AND status!='8' AND custom_status=''")
+    conn.execute("UPDATE delivery_orders SET custom_status='printed' WHERE wave_no!='' AND wave_no IS NOT NULL AND custom_status=''")
+    conn.execute("UPDATE delivery_orders SET custom_status='cancelled' WHERE status='8'")
+    conn.commit(); conn.close()
+    wb.close()
+
+    return {"code":0,"data":{"imported":count,"msg":"成功导入"+str(count)+"条记录"}}

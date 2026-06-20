@@ -1,555 +1,150 @@
 {% extends "base.html" %}
-{% block title %}订单管理 - RiiChain{% endblock %}
+{% block title %}订单管理 — RiiChain{% endblock %}
+{% block extra_css %}
+<style>
+  .kpi-card { border:none; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.06); cursor:pointer; transition:all 0.2s; }
+  .kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.12); }
+  .kpi-card.active { border:2px solid var(--primary); }
+  .kpi-val { font-size:28px; font-weight:800; }
+  .kpi-lbl { font-size:12px; color:#64748b; }
+  .status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+  .st-pending{background:#fef3c7;color:#92400e} .st-printed{background:#dbeafe;color:#1d4ed8}
+  .st-picked{background:#e0e7ff;color:#3730a3} .st-reviewed{background:#dcfce7;color:#166534}
+  .st-shipped{background:#cffafe;color:#155e75} .st-cancelled{background:#fee2e2;color:#991b1b}
+  .filter-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .filter-bar input,.filter-bar select { padding:6px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; }
+  .page-btn { padding:4px 10px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; cursor:pointer; font-size:13px; }
+  .page-btn:hover { background:#f1f5f9; }
+  .page-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-cart module-icon"></i> 订单管理</h4>
-    <button class="btn btn-primary" onclick="showAddModal()">
-        <i class="bi bi-plus-lg"></i> 手动添加订单
-    </button>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0"><i class="bi bi-cart me-2" style="color:var(--primary);"></i>订单管理</h4>
+  <div class="d-flex gap-2">
+    <input type="file" id="excel-upload" accept=".xlsx,.xls" style="display:none;" onchange="uploadExcel(this)">
+    <button class="btn btn-sm btn-outline-danger" onclick="document.getElementById('excel-upload').click()">📥 导入Excel</button>
+    <span id="upload-status" class="small text-muted"></span>
+  </div>
 </div>
 
-<!-- WMS 波次查询 -->
-<div class="card mb-4 border-0 shadow-sm">
-    <div class="card-body py-3">
-        <div class="d-flex align-items-center gap-2">
-            <span class="fw-semibold text-nowrap"><i class="bi bi-cloud-download me-1"></i>领星 WMS 波次查询</span>
-            <input type="text" class="form-control form-control-sm" id="wms-wave-input" placeholder="输入波次号..." style="max-width:240px;font-family:monospace;" onkeydown="if(event.key==='Enter')fetchWMSWave()">
-            <button class="btn btn-sm btn-primary" onclick="fetchWMSWave()">查询</button>
-            <span class="text-muted small ms-2" id="wms-status"></span>
-        </div>
-        <div id="wms-result" class="mt-3" style="display:none;"></div>
-    </div>
+<!-- KPI Cards -->
+<div class="row g-2 mb-3" id="kpi-cards">
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('')"><div class="kpi-val" id="kpi-total">-</div><div class="kpi-lbl">总单量</div></div></div>
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('pending')"><div class="kpi-val" id="kpi-pending">-</div><div class="kpi-lbl">待处理</div></div></div>
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('printed')"><div class="kpi-val" id="kpi-printed">-</div><div class="kpi-lbl">已打印</div></div></div>
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('picked')"><div class="kpi-val" id="kpi-picked">-</div><div class="kpi-lbl">已拣货</div></div></div>
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('reviewed')"><div class="kpi-val" id="kpi-reviewed">-</div><div class="kpi-lbl">已复核</div></div></div>
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('shipped')"><div class="kpi-val" id="kpi-shipped">-</div><div class="kpi-lbl">已出库</div></div></div>
+  <div class="col"><div class="kpi-card card p-2 text-center" onclick="filterByStatus('cancelled')"><div class="kpi-val" id="kpi-cancelled">-</div><div class="kpi-lbl">已取消</div></div></div>
 </div>
 
-<!-- 统计卡片 -->
-<div class="row g-3 mb-4" id="statsRow">
-    <div class="col-md-15 col-lg-2">
-        <div class="card stat-card bg-light">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small">待处理</div>
-                <div class="stat-number text-warning" id="statPending">-</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-15 col-lg-2">
-        <div class="card stat-card bg-light">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small">路由中</div>
-                <div class="stat-number text-info" id="statProcessing">-</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-15 col-lg-2">
-        <div class="card stat-card bg-light">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small">生产中</div>
-                <div class="stat-number text-primary" id="statPrinted">-</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-15 col-lg-2">
-        <div class="card stat-card bg-light">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small">已发货</div>
-                <div class="stat-number text-success" id="statShipped">-</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-15 col-lg-2">
-        <div class="card stat-card bg-light">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small">已完成</div>
-                <div class="stat-number text-secondary" id="statCompleted">-</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-15 col-lg-2">
-        <div class="card stat-card bg-light" style="border: 2px solid var(--primary);">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small">总订单数</div>
-                <div class="stat-number" id="statTotal">-</div>
-            </div>
-        </div>
-    </div>
+<!-- Filter Bar -->
+<div class="card mb-3 border-0 shadow-sm"><div class="card-body py-2">
+  <div class="filter-bar">
+    <span class="fw-semibold small">📅 创建时间</span>
+    <input type="date" id="f-date-from" style="width:140px;" title="开始日期">
+    <span class="small text-muted">至</span>
+    <input type="date" id="f-date-to" style="width:140px;" title="结束日期">
+    <span class="fw-semibold small ms-3">📋 状态</span>
+    <select id="f-status" style="width:120px;">
+      <option value="">全部</option>
+      <option value="pending">待处理</option><option value="printed">已打印</option>
+      <option value="picked">已拣货</option><option value="reviewed">已复核</option>
+      <option value="shipped">已出库</option><option value="cancelled">已取消</option>
+    </select>
+    <select id="f-ym" class="form-select-sm" style="width:auto;" onchange="loadOrders()"><option value="">全部月份</option></select>
+    <button class="btn btn-sm btn-danger" onclick="loadOrders(1)">查询</button>
+    <span class="small text-muted ms-auto" id="page-info"></span>
+  </div>
+</div></div>
+
+<!-- Orders Table -->
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive" style="max-height:60vh;overflow-y:auto;">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light" style="position:sticky;top:0;z-index:1;">
+        <tr><th>出库单号</th><th>波次号</th><th>SKU数</th><th>总件数</th><th>产品</th><th>快递单号</th><th>状态</th><th>出库日期</th></tr>
+      </thead>
+      <tbody id="orders-tbody"><tr><td colspan="8" class="text-center py-4 text-muted">加载中...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card-footer bg-white d-flex justify-content-center gap-1 py-2" id="pagination"></div>
 </div>
-
-<!-- 状态 Tabs -->
-<ul class="nav nav-tabs mb-3" id="statusTabs">
-    <li class="nav-item">
-        <a class="nav-link active" data-status="all" href="#" onclick="filterByStatus(event, 'all')">全部</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-status="pending" href="#" onclick="filterByStatus(event, 'pending')">待处理</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-status="processing" href="#" onclick="filterByStatus(event, 'processing')">路由中</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-status="printed" href="#" onclick="filterByStatus(event, 'printed')">生产中</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-status="shipped" href="#" onclick="filterByStatus(event, 'shipped')">已发货</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-status="completed" href="#" onclick="filterByStatus(event, 'completed')">已完成</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-status="cancelled" href="#" onclick="filterByStatus(event, 'cancelled')">已取消</a>
-    </li>
-</ul>
-
-<!-- 筛选栏 -->
-<div class="row g-2 mb-3">
-    <div class="col-auto">
-        <select class="form-select form-select-sm" id="filterPlatform" onchange="loadOrders()">
-            <option value="">所有平台</option>
-            <option value="tiktok">TikTok</option>
-            <option value="shopify">Shopify</option>
-            <option value="amazon">Amazon</option>
-            <option value="manual">手动录入</option>
-        </select>
-    </div>
-    <div class="col-auto">
-        <select class="form-select form-select-sm" id="filterStatus" onchange="loadOrders()">
-            <option value="">所有状态</option>
-            <option value="pending">待处理</option>
-            <option value="paid">已付款</option>
-            <option value="processing">路由中</option>
-            <option value="printed">生产中</option>
-            <option value="packed">已打包</option>
-            <option value="shipped">已发货</option>
-            <option value="completed">已完成</option>
-            <option value="cancelled">已取消</option>
-        </select>
-    </div>
-    <div class="col-auto ms-auto">
-        <button class="btn btn-sm btn-outline-secondary" onclick="loadOrders()">
-            <i class="bi bi-arrow-clockwise"></i> 刷新
-        </button>
-    </div>
-</div>
-
-<!-- 订单列表 -->
-<div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width:40px;"></th>
-                        <th>订单号</th>
-                        <th>平台</th>
-                        <th>状态</th>
-                        <th>金额</th>
-                        <th>创建时间</th>
-                        <th>商品数</th>
-                        <th style="width:160px;">操作</th>
-                    </tr>
-                </thead>
-                <tbody id="orderTableBody">
-                    <tr><td colspan="8" class="text-center py-4 text-muted">加载中...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <div class="card-footer d-flex justify-content-between align-items-center" id="paginationBar" style="display:none;">
-        <small class="text-muted" id="pageInfo"></small>
-        <div class="btn-group btn-group-sm" id="pageBtns"></div>
-    </div>
-</div>
-
-<!-- 路由结果 Modal -->
-<div class="modal fade" id="routeModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-signpost-split"></i> 订单路由结果</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="routeModalBody">
-                <div class="text-center py-4">
-                    <div class="spinner-border text-primary"></div>
-                    <p class="mt-2">正在计算最优路由...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 添加订单 Modal -->
-<div class="modal fade" id="addOrderModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 手动添加订单</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addOrderForm">
-                    <div class="mb-3">
-                        <label class="form-label">订单号 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="platform_order_id" required placeholder="如 ORD-20260611-001">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">平台</label>
-                        <select class="form-select" name="platform">
-                            <option value="manual">手动录入</option>
-                            <option value="tiktok">TikTok</option>
-                            <option value="shopify">Shopify</option>
-                            <option value="amazon">Amazon</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">总金额 (USD)</label>
-                        <input type="number" class="form-control" name="total_amount" step="0.01" value="0.00">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">客户名称</label>
-                        <input type="text" class="form-control" name="customer_name" placeholder="选填">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">备注</label>
-                        <textarea class="form-control" name="notes" rows="2" placeholder="选填"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="submitAddOrder()">创建订单</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
-let currentStatus = 'all';
-let currentPage = 1;
+var currentPage=1,currentStatus='',totalPages=1;
+var statusMap={pending:'待处理',printed:'已打印',picked:'已拣货',reviewed:'已复核',shipped:'已出库',cancelled:'已取消'};
+var statusCls={pending:'st-pending',printed:'st-printed',picked:'st-picked',reviewed:'st-reviewed',shipped:'st-shipped',cancelled:'st-cancelled'};
 
-// 状态 Badge 映射
-const statusBadge = {
-    pending:    '<span class="badge bg-warning text-dark">待处理</span>',
-    paid:       '<span class="badge bg-info">已付款</span>',
-    processing: '<span class="badge bg-info">路由中</span>',
-    printed:    '<span class="badge bg-primary">生产中</span>',
-    packed:     '<span class="badge bg-secondary">已打包</span>',
-    shipped:    '<span class="badge bg-success">已发货</span>',
-    completed:  '<span class="badge bg-dark">已完成</span>',
-    cancelled:  '<span class="badge bg-danger">已取消</span>',
-};
-
-const platformLabel = {
-    tiktok: 'TikTok', shopify: 'Shopify', amazon: 'Amazon', manual: '手动',
-};
-
-// ── 初始化 ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    loadStats();
-    loadOrders();
-});
-
-// ── 加载统计 ────────────────────────────────────────────────────
-async function loadStats() {
-    try {
-        const res = await api.get('/orders/stats');
-        const d = res.data;
-        document.getElementById('statPending').textContent    = d.pending;
-        document.getElementById('statProcessing').textContent = d.processing;
-        document.getElementById('statPrinted').textContent    = d.printed;
-        document.getElementById('statShipped').textContent    = d.shipped;
-        document.getElementById('statCompleted').textContent  = d.completed;
-        document.getElementById('statTotal').textContent      = d.total;
-    } catch (e) {
-        console.error('Stats load failed', e);
-    }
+async function loadKPI(){
+  var r=await fetch('/api/v1/orders/delivery/kpi'); var d=(await r.json()).data||{};
+  var kpi=d.kpi||{};
+  document.getElementById('kpi-total').textContent=kpi.total||0;
+  document.getElementById('kpi-pending').textContent=kpi.pending||0;
+  document.getElementById('kpi-printed').textContent=kpi.printed||0;
+  document.getElementById('kpi-picked').textContent=kpi.picked||0;
+  document.getElementById('kpi-reviewed').textContent=kpi.reviewed||0;
+  document.getElementById('kpi-shipped').textContent=kpi.shipped||0;
+  document.getElementById('kpi-cancelled').textContent=kpi.cancelled||0;
+  // Month dropdown
+  var sel=document.getElementById('f-ym');
+  sel.innerHTML='<option value=\"\">全部月份</option>'+(d.available_months||[]).map(function(m){return '<option value=\"'+m+'\">'+m+'</option>';}).join('');
+  // Highlight active status card
+  document.querySelectorAll('.kpi-card').forEach(function(c){c.classList.remove('active');});
+  if(currentStatus) document.getElementById('kpi-'+currentStatus)?.parentElement?.classList.add('active');
 }
 
-// ── 加载订单列表 ────────────────────────────────────────────────
-async function loadOrders(page = 1) {
-    currentPage = page;
-    const platform = document.getElementById('filterPlatform').value;
-    const status = document.getElementById('filterStatus').value;
-    const effectiveStatus = currentStatus !== 'all' ? currentStatus : (status || '');
+function filterByStatus(st){currentStatus=st;document.getElementById('f-status').value=st;loadOrders(1);}
 
-    const params = { page, page_size: 15 };
-    if (platform) params.platform = platform;
-    if (effectiveStatus) params.status = effectiveStatus;
+async function loadOrders(page){
+  if(page) currentPage=page;
+  var ym=document.getElementById('f-ym').value;
+  var st=document.getElementById('f-status').value||currentStatus;
+  var df=document.getElementById('f-date-from').value;
+  var dt=document.getElementById('f-date-to').value;
+  var params=new URLSearchParams({page:currentPage,page_size:30});
+  if(ym) params.set('ym',ym);
+  if(st) params.set('status',st);
+  if(df) params.set('date_from',df);
+  if(dt) params.set('date_to',dt);
 
-    try {
-        const res = await api.get('/orders/', { params });
-        const d = res.data;
-        renderTable(d.data);
-        renderPagination(d);
-    } catch (e) {
-        document.getElementById('orderTableBody').innerHTML =
-            '<tr><td colspan="8" class="text-center py-4 text-danger">加载失败</td></tr>';
-    }
+  var r=await fetch('/api/v1/orders/delivery/list?'+params.toString());
+  var d=await r.json(); var data=d.data||{};
+  totalPages=data.pages||1;
+  document.getElementById('page-info').textContent='共 '+data.total+' 条，第 '+data.page+'/'+data.pages+' 页';
+
+  var orders=data.orders||[];
+  var tbody=document.getElementById('orders-tbody');
+  if(!orders.length){tbody.innerHTML='<tr><td colspan=\"8\" class=\"text-center py-4 text-muted\">无匹配数据</td></tr>';}
+  else {tbody.innerHTML=orders.map(function(o){return '<tr><td><code>'+o.outbound_no+'</code></td><td><small>'+(o.wave_no||'-')+'</small></td><td>'+(o.sku_count||0)+'</td><td>'+(o.total_qty||0)+'</td><td><small style=\"max-width:200px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">'+(o.product_names||'')+'</small></td><td><small>'+(o.tracking_no||'-')+'</small></td><td><span class=\"status-badge '+(statusCls[o.custom_status]||'')+'\">'+(statusMap[o.custom_status]||o.custom_status||'?')+'</span></td><td>'+(o.order_date||'')+'</td></tr>';}).join('');}
+
+  // Pagination
+  var pg=document.getElementById('pagination');
+  var h='';
+  if(currentPage>1) h+='<button class=\"page-btn\" onclick=\"loadOrders('+(currentPage-1)+')\">上一页</button>';
+  for(var i=Math.max(1,currentPage-3);i<=Math.min(totalPages,currentPage+3);i++) h+='<button class=\"page-btn'+(i===currentPage?' active':'')+'\" onclick=\"loadOrders('+i+')\">'+i+'</button>';
+  if(currentPage<totalPages) h+='<button class=\"page-btn\" onclick=\"loadOrders('+(currentPage+1)+')\">下一页</button>';
+  pg.innerHTML=h;
 }
 
-// ── 渲染表格 ────────────────────────────────────────────────────
-function renderTable(orders) {
-    const tbody = document.getElementById('orderTableBody');
-    if (!orders.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">暂无订单数据</td></tr>';
-        return;
-    }
-    tbody.innerHTML = orders.map((o, i) => {
-        const shortId = o.id ? o.id.substring(0, 8) : '-';
-        const displayNo = o.platform_order_id || shortId;
-        return `
-            <tr class="order-row" data-order-id="${o.id}" style="cursor:pointer;">
-                <td>
-                    <i class="bi bi-chevron-right expand-icon" id="icon-${o.id}"></i>
-                </td>
-                <td><code>${escHtml(displayNo)}</code></td>
-                <td>${platformLabel[o.platform] || o.platform || '-'}</td>
-                <td>${statusBadge[o.status] || o.status}</td>
-                <td>$${o.total_amount?.toFixed(2) || '0.00'}</td>
-                <td><small>${o.created_at || ''}</small></td>
-                <td>${o.item_count || 0}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); doRoute('${o.id}')" title="路由">
-                        <i class="bi bi-signpost-split"></i> 路由
-                    </button>
-                </td>
-            </tr>
-            <tr class="items-detail" id="items-${o.id}" style="display:none;">
-                <td colspan="8" class="bg-light p-3">
-                    <div id="items-content-${o.id}">加载中...</div>
-                </td>
-            </tr>`;
-    }).join('');
+loadKPI();loadOrders();
 
-    // 点击行展开 items
-    document.querySelectorAll('.order-row').forEach(row => {
-        row.addEventListener('click', function() {
-            const oid = this.dataset.orderId;
-            toggleItems(oid);
-        });
-    });
-}
-
-// ── 展开/收起 items ─────────────────────────────────────────────
-async function toggleItems(orderId) {
-    const detailRow = document.getElementById('items-' + orderId);
-    const icon = document.getElementById('icon-' + orderId);
-    if (detailRow.style.display === 'none') {
-        detailRow.style.display = '';
-        icon.classList.replace('bi-chevron-right', 'bi-chevron-down');
-        // 加载详情
-        try {
-            const res = await api.get(`/orders/${orderId}`);
-            const o = res.data;
-            const items = o.items || [];
-            const html = items.length ? `
-                <table class="table table-sm table-borderless mb-0">
-                    <thead><tr class="text-muted small">
-                        <th>SKU</th><th>产品名</th><th>数量</th><th>单价</th><th>生产状态</th>
-                    </tr></thead>
-                    <tbody>
-                        ${items.map(it => `<tr>
-                            <td><code>${escHtml(it.sku)}</code></td>
-                            <td>${escHtml(it.product_name || '-')}</td>
-                            <td>${it.qty}</td>
-                            <td>$${it.unit_price?.toFixed(2) || '0.00'}</td>
-                            <td><span class="badge bg-light text-dark">${it.production_status || 'pending'}</span></td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>` : '<span class="text-muted">无商品明细</span>';
-            document.getElementById('items-content-' + orderId).innerHTML = html;
-        } catch (e) {
-            document.getElementById('items-content-' + orderId).innerHTML =
-                '<span class="text-danger">加载失败</span>';
-        }
-    } else {
-        detailRow.style.display = 'none';
-        icon.classList.replace('bi-chevron-down', 'bi-chevron-right');
-    }
-}
-
-// ── 分页 ────────────────────────────────────────────────────────
-function renderPagination(d) {
-    const bar = document.getElementById('paginationBar');
-    if (d.pages <= 1) { bar.style.display = 'none'; return; }
-    bar.style.display = '';
-    document.getElementById('pageInfo').textContent =
-        `共 ${d.total} 条，第 ${d.page}/${d.pages} 页`;
-    let btns = '';
-    for (let p = 1; p <= d.pages; p++) {
-        btns += `<button class="btn btn-sm ${p === d.page ? 'btn-primary' : 'btn-outline-primary'}"
-            onclick="loadOrders(${p})">${p}</button>`;
-    }
-    document.getElementById('pageBtns').innerHTML = btns;
-}
-
-// ── Status Tab 过滤 ─────────────────────────────────────────────
-function filterByStatus(e, status) {
-    e.preventDefault();
-    currentStatus = status;
-    document.querySelectorAll('#statusTabs .nav-link').forEach(el => el.classList.remove('active'));
-    e.target.classList.add('active');
-    document.getElementById('filterStatus').value = '';
-    loadOrders(1);
-}
-
-// ── 路由 ────────────────────────────────────────────────────────
-async function doRoute(orderId) {
-    const modal = new bootstrap.Modal(document.getElementById('routeModal'));
-    modal.show();
-    document.getElementById('routeModalBody').innerHTML = `
-        <div class="text-center py-4">
-            <div class="spinner-border text-primary"></div>
-            <p class="mt-2">正在计算最优路由...</p>
-        </div>`;
-
-    try {
-        const res = await api.post(`/orders/${orderId}/route`);
-        const d = res.data;
-        const best = d.selected_facility;
-
-        const scoreBar = (score, color) =>
-            `<div class="d-flex align-items-center gap-2 mb-1">
-                <div style="width:100px;font-size:0.85rem;">${score.label}</div>
-                <div class="progress flex-grow-1" style="height:8px;">
-                    <div class="progress-bar bg-${color}" style="width:${score.value}%"></div>
-                </div>
-                <span style="width:45px;text-align:right;font-size:0.85rem;">${score.value}</span>
-            </div>`;
-
-        const scores = [
-            { label: '距离评分', value: best.proximity_score, color: 'primary' },
-            { label: '库存评分', value: best.stock_score, color: 'success' },
-            { label: '产能评分', value: best.capacity_score, color: 'warning' },
-            { label: '成本评分', value: best.cost_score, color: 'danger' },
-        ];
-
-        let facilityRows = d.all_scores.map((f, i) => `
-            <tr class="${f.facility_id === best.facility_id ? 'table-primary fw-bold' : ''}">
-                <td>${i + 1}</td>
-                <td>${escHtml(f.facility_name)}</td>
-                <td>${f.proximity_score}</td>
-                <td>${f.stock_score}</td>
-                <td>${f.capacity_score}</td>
-                <td>${f.cost_score}</td>
-                <td><strong>${f.total_score}</strong></td>
-            </tr>`).join('');
-
-        document.getElementById('routeModalBody').innerHTML = `
-            <div class="text-center mb-3">
-                <h5 class="text-success"><i class="bi bi-check-circle"></i> 已选择最优印刷厂</h5>
-                <h4 class="text-primary">${escHtml(best.facility_name)}</h4>
-                <span class="badge bg-success fs-6">综合评分 ${best.total_score}</span>
-            </div>
-            <h6 class="mb-2">四维度评分明细</h6>
-            ${scores.map(s => scoreBar(s, s.color)).join('')}
-            <hr>
-            <h6>全部候选印刷厂对比</h6>
-            <div class="table-responsive" style="max-height:300px;">
-                <table class="table table-sm small">
-                    <thead class="table-light">
-                        <tr><th>#</th><th>印刷厂</th><th>距离</th><th>库存</th><th>产能</th><th>成本</th><th>总分</th></tr>
-                    </thead>
-                    <tbody>${facilityRows}</tbody>
-                </table>
-            </div>`;
-
-        loadStats();
-        loadOrders(currentPage);
-    } catch (e) {
-        document.getElementById('routeModalBody').innerHTML = `
-            <div class="alert alert-danger">路由计算失败：${escHtml(e.response?.data?.detail || e.message)}</div>`;
-    }
-}
-
-// ── 添加订单 ────────────────────────────────────────────────────
-function showAddModal() {
-    document.getElementById('addOrderForm').reset();
-    new bootstrap.Modal(document.getElementById('addOrderModal')).show();
-}
-
-async function submitAddOrder() {
-    const form = document.getElementById('addOrderForm');
-    const fd = new FormData(form);
-    const data = Object.fromEntries(fd.entries());
-    data.total_amount = parseFloat(data.total_amount) || 0;
-
-    if (!data.platform_order_id) {
-        alert('请输入订单号');
-        return;
-    }
-
-    try {
-        await api.post('/orders/', data);
-        bootstrap.Modal.getInstance(document.getElementById('addOrderModal')).hide();
-        loadStats();
-        loadOrders(currentPage);
-    } catch (e) {
-        alert('创建失败：' + (e.response?.data?.detail || e.message));
-    }
-}
-
-// ── 工具 ────────────────────────────────────────────────────────
-function escHtml(s) {
-    if (!s) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ── WMS Wave Query ──
-async function fetchWMSWave() {
-    const waveNo = document.getElementById('wms-wave-input').value.trim();
-    if (!waveNo) return;
-    const statusEl = document.getElementById('wms-status');
-    const resultEl = document.getElementById('wms-result');
-    statusEl.textContent = '⏳ 正在从领星拉取...';
-    try {
-        const r = await fetch('/api/v1/orders/wms/wave-detail', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({waveNo: waveNo})
-        });
-        const data = await r.json();
-        if (data.code !== 0) {
-            statusEl.textContent = '❌ ' + (data.msg || '查询失败');
-            return;
-        }
-        const details = data.data.details || [];
-        const orders = [...new Set(details.map(d => d.orderNo))];
-        statusEl.textContent = `✅ ${orders.length} 个订单 · ${details.length} 个 SKU 行`;
-
-        // Render table
-        let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
-        html += '<thead><tr><th>订单号</th><th>SKU</th><th>数量</th><th>类型</th><th>快递单号</th><th>面单</th></tr></thead><tbody>';
-        for (const d of details) {
-            const typeBadge = d.productType === 'Accessories'
-                ? '<span class="badge bg-warning text-dark">配件</span>'
-                : '<span class="badge bg-secondary">定制</span>';
-            const labelBtn = d.sheetUrl
-                ? `<a href="${d.sheetUrl}" target="_blank" class="btn btn-sm btn-outline-primary">📮 面单</a>`
-                : '<span class="text-muted small">-</span>';
-            html += `<tr>
-                <td><code>${d.orderNo}</code></td>
-                <td><strong>${d.sku}</strong><br><small class="text-muted">${d.productName||''}</small></td>
-                <td>× ${d.qty}</td>
-                <td>${typeBadge}</td>
-                <td><small>${d.trackingNo||'-'}</small></td>
-                <td>${labelBtn}</td>
-            </tr>`;
-        }
-        html += '</tbody></table></div>';
-        resultEl.innerHTML = html;
-        resultEl.style.display = 'block';
-    } catch(e) {
-        statusEl.textContent = '❌ 加载失败: ' + e.message;
-    }
+async function uploadExcel(input){
+  var f=input.files[0];if(!f)return;
+  var st=document.getElementById('upload-status');st.textContent='⏳ 导入中...';
+  var fd=new FormData();fd.append('file',f);
+  try{
+    var r=await fetch('/api/v1/orders/delivery/upload-excel',{method:'POST',body:fd});
+    var d=await r.json();
+    if(d.code===0){st.textContent='✅ '+d.data.msg;}
+    else{st.textContent='❌ '+d.msg;}
+    loadKPI();loadOrders();
+  }catch(e){st.textContent='❌ '+e.message;}
+  input.value='';
 }
 </script>
-
-<style>
-.order-row:hover { background-color: #f8f9fa; }
-.expand-icon { transition: transform 0.2s; font-size: 0.8rem; color: #999; }
-.items-detail { transition: all 0.2s; }
-</style>
 {% endblock %}

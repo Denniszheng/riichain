@@ -1,12 +1,14 @@
 """
 领星 WMS API 对接服务
-签名算法 + 波次查询 + 响应转换
+签名算法 + 波次查询 + 订单同步 + 响应转换
 """
-import hashlib, hmac, json, time
+import hashlib, hmac, json, time, sqlite3, os
 from urllib.request import Request, urlopen
 from app.core.config import get_settings
 
 settings = get_settings()
+
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "riichain.db")
 
 WMS_APP_KEY = "60d2da562ee3492e8bdaaea44c611910"
 WMS_SECRET = "e7f3e07d4f15438da02308fa1ebf90be"
@@ -96,3 +98,88 @@ def _transform_response(wms_data: dict) -> dict:
             "details": details,
         }
     }
+
+
+# ── Order Sync ──
+
+def init_order_db():
+    """Create synced_orders table if not exists"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""CREATE TABLE IF NOT EXISTS synced_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_no TEXT, wave_no TEXT, sku TEXT, qty INTEGER DEFAULT 1,
+        product_type TEXT, tracking_no TEXT, carrier TEXT,
+        product_name TEXT, sheet_url TEXT, order_date TEXT,
+        synced_at TEXT, UNIQUE(order_no, sku)
+    )""")
+    conn.commit(); conn.close()
+
+
+def sync_waves_to_db(wave_nos: list) -> dict:
+    """Sync multiple waves from WMS into local database"""
+    init_order_db()
+    today = time.strftime("%Y-%m-%d %H:%M:%S")
+    synced_waves = 0
+    synced_orders = 0
+    errors = []
+
+    for wave_no in wave_nos:
+        wave_no = wave_no.strip()
+        if not wave_no: continue
+        try:
+            result = fetch_wave_detail(wave_no)
+            if result.get("code") != 0:
+                errors.append({"waveNo": wave_no, "error": result.get("msg", "unknown")})
+                continue
+            details = result["data"]["details"]
+            conn = sqlite3.connect(DB_PATH)
+            for d in details:
+                conn.execute("""INSERT OR REPLACE INTO synced_orders
+                    (order_no, wave_no, sku, qty, product_type, tracking_no, carrier, product_name, sheet_url, order_date, synced_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (d["orderNo"], wave_no, d["sku"], d["qty"], d["productType"],
+                     d.get("trackingNo",""), d.get("carrier",""), d.get("productName",""),
+                     d.get("sheetUrl",""), today[:10], today))
+                synced_orders += 1
+            conn.commit(); conn.close()
+            synced_waves += 1
+        except Exception as e:
+            errors.append({"waveNo": wave_no, "error": str(e)})
+
+    return {"synced_waves": synced_waves, "synced_orders": synced_orders, "errors": errors}
+
+
+def get_synced_orders(year_month: str = "") -> dict:
+    """Get synced orders, optionally filtered by year-month (YYYY-MM)"""
+    conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
+    if year_month:
+        rows = conn.execute(
+            "SELECT * FROM synced_orders WHERE order_date LIKE ? ORDER BY order_date DESC, order_no, sku",
+            (year_month + "%",)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM synced_orders ORDER BY order_date DESC, order_no, sku").fetchall()
+    conn.close()
+
+    orders = [dict(r) for r in rows]
+
+    # Calculate stats
+    order_set = set()
+    stats = {"total_orders": 0, "total_skus": 0, "total_qty": 0, "status_dist": []}
+    for o in orders:
+        order_set.add(o["order_no"])
+        stats["total_qty"] += o.get("qty", 0)
+    stats["total_orders"] = len(order_set)
+    stats["total_skus"] = len(set(o["sku"] for o in orders))
+
+    return {"orders": orders, "stats": stats}
+
+
+def get_available_months() -> list:
+    """Get list of months that have synced order data"""
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT DISTINCT substr(order_date,1,7) as ym FROM synced_orders ORDER BY ym DESC"
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]

@@ -217,7 +217,7 @@ function printLabel(orderNo) {
   var row=allRows.find(function(r){return r.orderNo===orderNo&&r.sheetUrl;});
   if (row&&row.sheetUrl) {
     var w=window.open(row.sheetUrl,'_blank');
-    if(w){ printedSet[orderNo]=true; savePrinted(); if(currentWave) renderWave(currentWave); }
+    if(w){ printedSet[orderNo]=true; savePrinted(); syncOrderStatus(orderNo,"reviewed"); if(currentWave) renderWave(currentWave); }
     return;
   }
   var dataUrl=labelCache[orderNo];
@@ -225,7 +225,7 @@ function printLabel(orderNo) {
   var w=window.open('','_blank','width=900,height=700');
   if(!w){ alert('请允许弹出窗口'); return; }
   w.document.body.innerHTML='<embed src="'+dataUrl+'" type="application/pdf" style="width:100vw;height:100vh;border:none;">';
-  printedSet[orderNo]=true; savePrinted(); if(currentWave) renderWave(currentWave);
+  printedSet[orderNo]=true; savePrinted(); syncOrderStatus(orderNo,"reviewed"); if(currentWave) renderWave(currentWave);
 }
 
 // ── Image Loading ──
@@ -261,6 +261,7 @@ function stopScanner() {
 }
 
 // ── Utility ──
+function syncOrderStatus(orderNo,cs){ fetch("/api/v1/orders/delivery/update-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_no:orderNo,custom_status:cs})}).catch(function(){}); }
 function copyOrderNo(on) {
   navigator.clipboard.writeText(on);
   var t=document.getElementById('copy-toast'); t.textContent='已复制: '+on; t.classList.add('show');
@@ -270,7 +271,7 @@ function openLightbox(src) {
   document.getElementById('lightbox-img').src=src; document.getElementById('lightbox').classList.add('active');
 }
 function closeLightbox() { document.getElementById('lightbox').classList.remove('active'); }
-function resetPrinted() { printedSet={}; savePrinted(); if(currentWave) renderWave(currentWave); }
+function resetPrinted() { printedSet={}; savePrinted(); if(currentWave){ var wm=waveMap[currentWave]; if(wm) wm.rows.forEach(function(r){syncOrderStatus(r.orderNo,"printed");}); renderWave(currentWave); } }
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeLightbox(); });
 </script>
 {% endblock %}
