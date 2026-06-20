@@ -1,7 +1,356 @@
 {% extends "base.html" %}
 {% block title %}基底产品 — RiiChain{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tab-nav .btn { border-radius:20px; padding:6px 18px; font-size:13px; margin:2px; }
+  .tab-nav .btn.active { background:var(--primary); color:#fff; }
+  .sku-panel .filter-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  .sku-panel .filter-bar select,.sku-panel .filter-bar input { padding:6px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; }
+  .sku-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+  .sku-badge.Accessories { background:#fef3c7; color:#b45309; }
+  .sku-badge.Standard { background:#dbeafe; color:#1d4ed8; }
+  .sku-badge.Customization { background:#f3e8ff; color:#7c3aed; }
+  .upload-zone { border:2px dashed #2563eb; border-radius:12px; padding:30px; text-align:center; cursor:pointer; }
+  .upload-zone:hover { background:#f0f4ff; }
+  .stat-mini { background:#f8fafc; border-radius:10px; padding:16px; text-align:center; }
+  .stat-mini .val { font-size:24px; font-weight:700; }
+  .stat-mini .lbl { font-size:11px; color:#64748b; }
+  .sku-panel table { width:100%; border-collapse:collapse; font-size:13px; }
+  .sku-panel th { background:#f1f5f9; padding:8px 12px; text-align:left; border-bottom:2px solid #e2e8f0; font-size:12px; }
+  .sku-panel td { padding:8px 12px; border-bottom:1px solid #f1f5f9; }
+  .empty-state { text-align:center; padding:40px; color:#94a3b8; }
+  .section-box { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:16px; }
+</style>
+{% endblock %}
+
 {% block content %}
-<h2 class="mb-3">📦 基底产品 <small class="text-muted fs-6">Blank Products</small></h2>
-<p class="text-muted">管理 POD 的空白耗材产品库（T恤、亚克力板、手机壳等）。</p>
-<div class="card p-3"><div class="text-center py-4 text-muted">基底产品管理页面 — 可通过 API 导入 SKU Master</div></div>
+<div class="mb-3">
+  <h4 class="fw-bold mb-1"><i class="bi bi-box me-2" style="color:var(--primary);"></i>基底产品</h4>
+  <p class="text-muted mb-0" style="font-size:0.9rem;">SKU 主数据管理 + 产品图片管理，数据存储在云端（与 swaner.vip 共享）</p>
+</div>
+
+<!-- Top Tabs -->
+<div class="tab-nav mb-4 d-flex gap-1 flex-wrap">
+  <button class="btn btn-sm active" onclick="switchTab('tab-sku')">📋 SKU Master</button>
+  <button class="btn btn-sm" onclick="switchTab('tab-img')">🖼️ 图片管理</button>
+</div>
+
+<!-- ── SKU Master Tab ── -->
+<div class="sku-panel" id="tab-sku">
+  <!-- Sub-tabs -->
+  <div class="tab-nav mb-3">
+    <button class="btn btn-sm btn-outline-secondary active" onclick="switchSkuSub('sub-std')">Standard / Accessories</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="switchSkuSub('sub-cust')">Customization</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="switchSkuSub('sub-import')">📥 导入/同步</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="switchSkuSub('sub-overview')">📊 概览</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="switchSkuSub('sub-delete')">🗑️ 删除</button>
+  </div>
+
+  <!-- Standard/Accessories -->
+  <div class="section-box" id="sub-std">
+    <h5 class="small fw-bold mb-3">Standard / Accessories SKU 清单</h5>
+    <div class="filter-bar">
+      <select id="std-type" onchange="renderStdTable()"><option value="">全部类型</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option></select>
+      <input type="text" id="std-search" placeholder="搜索 SKU..." oninput="renderStdTable()" style="width:200px;">
+      <span class="small text-muted" id="std-count"></span>
+    </div>
+    <div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>来源</th></tr></thead><tbody id="std-tbody"><tr><td colspan="4" class="empty-state">加载中...</td></tr></tbody></table></div>
+  </div>
+
+  <!-- Customization -->
+  <div class="section-box" id="sub-cust" style="display:none;">
+    <h5 class="small fw-bold mb-3">Customization SKU 清单</h5>
+    <div class="filter-bar">
+      <input type="text" id="cust-search" placeholder="搜索 SKU..." oninput="renderCustTable()" style="width:200px;">
+      <span class="small text-muted" id="cust-count"></span>
+    </div>
+    <div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>来源</th></tr></thead><tbody id="cust-tbody"><tr><td colspan="4" class="empty-state">加载中...</td></tr></tbody></table></div>
+  </div>
+
+  <!-- Import/Sync -->
+  <div class="section-box" id="sub-import" style="display:none;">
+    <h5 class="small fw-bold mb-3">🔄 从领星批量同步</h5>
+    <p class="small text-muted mb-2">输入波次号（每行一个），自动收录所有 SKU</p>
+    <textarea id="bulk-waves" rows="4" class="form-control mb-2" style="font-family:monospace;font-size:13px;" placeholder="W260611CV6&#10;W260612AB3"></textarea>
+    <button class="btn btn-sm btn-danger" onclick="bulkSync()">🔄 开始同步</button>
+    <span class="small text-muted ms-2" id="bulk-status"></span>
+
+    <hr>
+    <h5 class="small fw-bold mb-2">📥 手动导入 SKU</h5>
+    <p class="small text-muted mb-2">格式：SKU代码,类型 (Standard/Accessories/Customization)，每行一个</p>
+    <textarea id="import-text" rows="6" class="form-control mb-2" style="font-family:monospace;font-size:13px;" placeholder="SKU001,Standard&#10;SKU002,Accessories"></textarea>
+    <button class="btn btn-sm btn-danger" onclick="doImport()">导入</button>
+    <span class="small text-muted ms-2" id="import-result"></span>
+  </div>
+
+  <!-- Overview -->
+  <div class="section-box" id="sub-overview" style="display:none;">
+    <div class="row g-3 mb-3">
+      <div class="col-3"><div class="stat-mini"><div class="val" id="ov-total">-</div><div class="lbl">SKU 总数</div></div></div>
+      <div class="col-3"><div class="stat-mini"><div class="val" id="ov-std">-</div><div class="lbl">Standard</div></div></div>
+      <div class="col-3"><div class="stat-mini"><div class="val" id="ov-acc">-</div><div class="lbl">Accessories</div></div></div>
+      <div class="col-3"><div class="stat-mini"><div class="val" id="ov-cust">-</div><div class="lbl">Customization</div></div></div>
+    <h6 class="small fw-bold">📈 增长趋势</h6>
+    <div style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>日期</th><th>新增</th><th>累计</th></tr></thead><tbody id="trend-tbody"></tbody></table></div>
+  </div>
+
+  <!-- Delete -->
+  <div class="section-box" id="sub-delete" style="display:none;">
+    <h5 class="small fw-bold mb-3">🗑️ 删除 SKU</h5>
+    <div class="filter-bar">
+      <select id="del-type" onchange="renderDeleteTable()"><option value="">全部</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
+      <input type="date" id="del-date-from" onchange="renderDeleteTable()" style="width:130px;" title="开始日期">
+      <input type="date" id="del-date-to" onchange="renderDeleteTable()" style="width:130px;" title="结束日期">
+      <input type="text" id="del-search" placeholder="搜索 SKU..." oninput="renderDeleteTable()" style="width:160px;">
+      <button class="btn btn-sm btn-danger" onclick="batchDelSkus()">批量删除选中</button>
+      <span class="small text-muted" id="del-count"></span>
+    </div>
+    <div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="del-all" onchange="toggleAllDel(this)"></th><th>SKU</th><th>类型</th><th>维护日期</th><th>来源</th></tr></thead><tbody id="del-tbody"></tbody></table></div>
+  </div>
+</div>
+
+<!-- ── Image Management Tab ── -->
+<div class="sku-panel" id="tab-img" style="display:none;">
+  <div class="tab-nav mb-3">
+    <button class="btn btn-sm btn-outline-secondary active" onclick="switchImgSub('sub-img-upload')">📤 上传</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="switchImgSub('sub-img-overview')">📊 概览</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="switchImgSub('sub-img-delete')">🗑️ 删除</button>
+  </div>
+
+  <!-- Upload -->
+  <div class="section-box" id="sub-img-upload">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <h6 class="small fw-bold">Standard / Accessories</h6>
+        <div class="upload-zone" id="drop-std" onclick="document.getElementById('img-std-input').click()">
+          <i class="bi bi-cloud-upload" style="font-size:2rem;color:#2563eb;"></i>
+          <div class="mt-1 small">点击或拖拽上传</div>
+          <div class="small text-muted">文件名 = SKU 代码</div>
+        </div>
+        <input type="file" id="img-std-input" accept="image/*" multiple class="d-none" onchange="uploadBatch(this,'Standard')">
+        <select id="img-std-type" class="form-select form-select-sm mt-2" style="width:auto;">
+          <option value="Standard">类型: Standard</option>
+          <option value="Accessories">类型: Accessories</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <h6 class="small fw-bold">Customization</h6>
+        <div class="upload-zone" id="drop-cust" style="border-color:#9d174d;" onclick="document.getElementById('img-cust-input').click()">
+          <i class="bi bi-cloud-upload" style="font-size:2rem;color:#9d174d;"></i>
+          <div class="mt-1 small">点击或拖拽上传</div>
+          <div class="small text-muted">文件名 = SKU 代码</div>
+        </div>
+        <input type="file" id="img-cust-input" accept="image/*" multiple class="d-none" onchange="uploadBatch(this,'Customization')">
+      </div>
+    </div>
+    <div id="img-upload-status" class="mt-2 small"></div>
+  </div>
+
+  <!-- Overview -->
+  <div class="section-box" id="sub-img-overview" style="display:none;">
+    <div class="row g-3 mb-3">
+      <div class="col-3"><div class="stat-mini"><div class="val" id="iov-total">-</div><div class="lbl">SKU总数</div></div></div>
+      <div class="col-3"><div class="stat-mini"><div class="val" id="iov-has">-</div><div class="lbl">已有图片</div></div></div>
+      <div class="col-3"><div class="stat-mini"><div class="val" style="color:#dc2626;" id="iov-miss">-</div><div class="lbl">缺少图片</div></div></div>
+      <div class="col-3"><div class="stat-mini"><div class="val" id="iov-rate">-</div><div class="lbl">覆盖率</div></div></div>
+    <div class="filter-bar">
+      <select id="iov-type" onchange="renderImgOverview()"><option value="">全部</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
+      <select id="iov-filter" onchange="renderImgOverview()"><option value="missing">仅缺图</option><option value="all">全部</option><option value="has">仅有图</option></select>
+      <button class="btn btn-sm btn-danger" onclick="exportMissing()">📋 导出缺图清单</button>
+    </div>
+    <div style="max-height:45vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>图片</th></tr></thead><tbody id="iov-tbody"></tbody></table></div>
+  </div>
+
+  <!-- Delete -->
+  <div class="section-box" id="sub-img-delete" style="display:none;">
+    <h5 class="small fw-bold mb-3">🗑️ 删除图片</h5>
+    <div class="filter-bar">
+      <select id="idel-type" onchange="renderImgDel()"><option value="">全部</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
+      <input type="text" id="idel-search" placeholder="搜索 SKU..." oninput="renderImgDel()" style="width:160px;">
+      <button class="btn btn-sm btn-danger" onclick="batchDelImgs()">批量删除选中</button>
+      <span class="small text-muted" id="idel-count"></span>
+    </div>
+    <div style="max-height:45vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="idel-all" onchange="toggleAllImgDel(this)"></th><th>SKU</th><th>类型</th><th>文件名</th><th>大小</th><th>时间</th></tr></thead><tbody id="idel-tbody"></tbody></table></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Config ──
+const SKU_API = 'https://api.swaner.vip/sku';
+const IMG_API = 'https://api.swaner.vip/image';
+var delSelected = {};
+var imgDelSelected = {};
+
+// ── Tab Switching ──
+function switchTab(id) {
+  document.getElementById('tab-sku').style.display = id==='tab-sku'?'block':'none';
+  document.getElementById('tab-img').style.display = id==='tab-img'?'block':'none';
+  document.querySelectorAll('.tab-nav:first-of-type .btn').forEach(function(b,i){
+    b.classList.toggle('active', (i===0&&id==='tab-sku')||(i===1&&id==='tab-img'));
+  });
+  if (id==='tab-sku') { switchSkuSub('sub-std'); }
+  if (id==='tab-img') { switchImgSub('sub-img-upload'); }
+}
+function switchSkuSub(id) {
+  ['sub-std','sub-cust','sub-import','sub-overview','sub-delete'].forEach(function(s){ document.getElementById(s).style.display=s===id?'block':'none'; });
+  document.querySelectorAll('#tab-sku .tab-nav .btn').forEach(function(b,i){
+    var ids=['sub-std','sub-cust','sub-import','sub-overview','sub-delete'];
+    b.classList.toggle('active', ids[i]===id);
+  });
+  if (id==='sub-std'||id==='sub-cust') renderSkuTables();
+  if (id==='sub-overview') renderOverview();
+  if (id==='sub-delete') renderDeleteTable();
+}
+function switchImgSub(id) {
+  ['sub-img-upload','sub-img-overview','sub-img-delete'].forEach(function(s){ document.getElementById(s).style.display=s===id?'block':'none'; });
+  document.querySelectorAll('#tab-img .tab-nav .btn').forEach(function(b,i){
+    var ids=['sub-img-upload','sub-img-overview','sub-img-delete'];
+    b.classList.toggle('active', ids[i]===id);
+  });
+  if (id==='sub-img-overview') renderImgOverview();
+  if (id==='sub-img-delete') renderImgDel();
+}
+
+// ── SKU API ──
+async function apiGet(path) { var r=await fetch(SKU_API+path); return (await r.json()).data||[]; }
+async function getSkuList(f) {
+  var p=[]; if(f){if(f.productType)p.push('productType='+f.productType);if(f.dateFrom)p.push('dateFrom='+f.dateFrom);if(f.dateTo)p.push('dateTo='+f.dateTo);if(f.skuName)p.push('search='+f.skuName);}
+  var r=await fetch(SKU_API+'/list'+(p.length?'?'+p.join('&'):'')); return (await r.json()).data||[];
+}
+async function getStats() { var r=await fetch(SKU_API+'/stats'); return (await r.json()).data||{total:0,standard:0,accessories:0,customization:0,byDate:{}}; }
+async function upsertSkus(skus) { return fetch(SKU_API+'/upsert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus})}); }
+async function delSkus(skus) { return fetch(SKU_API+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skus})}); }
+
+// ── SKU Tables ──
+async function renderSkuTables() {
+  var all=await getSkuList();
+  // Std/Acc
+  var typeF=document.getElementById('std-type').value;
+  var search=(document.getElementById('std-search').value||'').toLowerCase();
+  var stdFiltered=all.filter(function(r){if(r.productType==='Customization')return false;if(typeF&&r.productType!==typeF)return false;if(search&&r.sku.toLowerCase().indexOf(search)===-1)return false;return true;});
+  document.getElementById('std-count').textContent=stdFiltered.length+' 条';
+  document.getElementById('std-tbody').innerHTML=stdFiltered.length?stdFiltered.map(function(r){return '<tr><td><code>'+r.sku+'</code></td><td><span class="sku-badge '+r.productType+'">'+r.productType+'</span></td><td>'+r.maintainDate+'</td><td>'+r.source+'</td></tr>';}).join(''):'<tr><td colspan="4" class="empty-state">暂无数据（从 WMS 查询波次后自动收录）</td></tr>';
+  // Cust
+  var custSearch=(document.getElementById('cust-search').value||'').toLowerCase();
+  var custFiltered=all.filter(function(r){if(r.productType!=='Customization')return false;if(custSearch&&r.sku.toLowerCase().indexOf(custSearch)===-1)return false;return true;});
+  document.getElementById('cust-count').textContent=custFiltered.length+' 条';
+  document.getElementById('cust-tbody').innerHTML=custFiltered.length?custFiltered.map(function(r){return '<tr><td><code>'+r.sku+'</code></td><td><span class="sku-badge Customization">Customization</span></td><td>'+r.maintainDate+'</td><td>'+r.source+'</td></tr>';}).join(''):'<tr><td colspan="4" class="empty-state">暂无数据</td></tr>';
+}
+function renderStdTable() { getSkuList().then(function(all){ /* reuse */ renderSkuTables(); }); }
+function renderCustTable() { getSkuList().then(function(all){ /* reuse */ renderSkuTables(); }); }
+
+// ── SKU Import/Sync ──
+async function bulkSync() {
+  var raw=document.getElementById('bulk-waves').value.trim();
+  if(!raw){alert('请输入波次号');return;}
+  var waves=raw.split(/[\n\r]+/).filter(function(l){return l.trim();});
+  var st=document.getElementById('bulk-status'); st.textContent='同步 '+waves.length+' 个波次...';
+  var total=0;
+  for(var i=0;i<waves.length;i++){
+    try {
+      var r=await fetch('/api/v1/orders/wms/wave-detail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({waveNo:waves[i].trim()})});
+      var d=await r.json(); var details=(d.data&&d.data.details)||[];
+      if(details.length){ var skus=details.map(function(x){return {sku:x.sku,productType:x.productType,source:'wms'};});
+        await upsertSkus(skus); total+=skus.length; }
+      st.textContent=(i+1)+'/'+waves.length+' 波次，收录 '+total+' SKU';
+    }catch(e){ st.textContent='波次 '+waves[i]+' 失败: '+e.message; }
+  }
+  st.textContent='✅ 完成！收录 '+total+' SKU'; renderSkuTables();
+}
+async function doImport() {
+  var text=document.getElementById('import-text').value.trim();
+  if(!text){alert('请输入SKU数据');return;}
+  var lines=text.split(/[\n\r]+/).filter(function(l){return l.trim();});
+  var rows=[];
+  for(var i=0;i<lines.length;i++){var p=lines[i].split(',');if(p.length>=2) rows.push({sku:p[0].trim(),productType:p[1].trim(),source:'manual'});}
+  if(!rows.length){alert('未解析到有效数据');return;}
+  await upsertSkus(rows);
+  document.getElementById('import-result').textContent='✅ 已导入 '+rows.length+' 个 SKU';
+  document.getElementById('import-text').value=''; renderSkuTables();
+}
+
+// ── SKU Overview ──
+async function renderOverview() {
+  var s=await getStats();
+  document.getElementById('ov-total').textContent=s.total; document.getElementById('ov-std').textContent=s.standard;
+  document.getElementById('ov-acc').textContent=s.accessories; document.getElementById('ov-cust').textContent=s.customization;
+  var dates=Object.keys(s.byDate).sort(), cum=0, rows='';
+  for(var i=0;i<dates.length;i++){ cum+=s.byDate[dates[i]]; rows+='<tr><td>'+dates[i]+'</td><td>+'+s.byDate[dates[i]]+'</td><td>'+cum+'</td></tr>'; }
+  document.getElementById('trend-tbody').innerHTML=rows||'<tr><td colspan="3" class="empty-state">暂无数据</td></tr>';
+}
+
+// ── SKU Delete ──
+async function renderDeleteTable() {
+  var f={}; var t=document.getElementById('del-type').value; var df=document.getElementById('del-date-from').value; var dt=document.getElementById('del-date-to').value;
+  if(t) f.productType=t; if(df) f.dateFrom=df; if(dt) f.dateTo=dt;
+  var all=await getSkuList(f); var s=(document.getElementById('del-search').value||'').toLowerCase();
+  if(s) all=all.filter(function(r){return r.sku.toLowerCase().indexOf(s)!==-1;});
+  document.getElementById('del-count').textContent=all.length+' 条'; delSelected={}; document.getElementById('del-all').checked=false;
+  document.getElementById('del-tbody').innerHTML=all.length?all.map(function(r){return '<tr><td><input type="checkbox" onchange="toggleDel(\''+r.sku+'\',this.checked)"></td><td><code>'+r.sku+'</code></td><td><span class="sku-badge '+r.productType+'">'+r.productType+'</span></td><td>'+r.maintainDate+'</td><td>'+r.source+'</td></tr>';}).join(''):'<tr><td colspan="5" class="empty-state">无匹配数据</td></tr>';
+}
+function toggleAllDel(cb){var cbs=document.querySelectorAll('#del-tbody input[type=checkbox]');for(var i=0;i<cbs.length;i++){cbs[i].checked=cb.checked;var sku=cbs[i].closest('tr').querySelector('code').textContent;if(cb.checked)delSelected[sku]=true;else delete delSelected[sku];}}
+function toggleDel(sku,checked){if(checked)delSelected[sku]=true;else delete delSelected[sku];}
+async function batchDelSkus(){var list=Object.keys(delSelected);if(!list.length){alert('请先勾选');return;}if(!confirm('确认删除 '+list.length+' 个 SKU？'))return;await delSkus(list);alert('已删除');renderDeleteTable();renderSkuTables();}
+
+// ── Image API ──
+async function imgApi(path,body){var opts=body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{method:'GET'};var r=await fetch(IMG_API+path,opts);return r.json();}
+
+// ── Upload ──
+function fileToB64(f){return new Promise(function(ok,err){var r=new FileReader();r.onload=function(){ok(r.result.split(',')[1]);};r.onerror=err;r.readAsDataURL(f);});}
+async function uploadBatch(input,defType){
+  var files=input.files;if(!files.length)return;
+  var pt=defType==='Standard'?document.getElementById('img-std-type').value:defType;
+  var st=document.getElementById('img-upload-status'); st.textContent='读取中...';
+  var imgs=[];
+  for(var i=0;i<files.length;i++){ var f=files[i],sku=f.name.replace(/\.[^.]+$/,'');
+    try{ var b64=await fileToB64(f); imgs.push({sku:sku,image:b64,productType:pt,fileType:f.name.split('.').pop()}); }
+    catch(e){ imgs.push({sku:sku,image:'',productType:pt}); }
+  }
+  st.textContent='上传中...';
+  var r=await imgApi('/upload',{images:imgs}); var d=r;
+  var ok=d.ok_count||0, fail=d.fail_count||0;
+  var h='<b>完成! 成功 '+ok+' 张, 失败 '+fail+' 张</b>';
+  if(fail&&d.results){ h+='<table class="table table-sm mt-2"><tr><th>SKU</th><th>原因</th></tr>';
+    for(var j=0;j<d.results.length;j++){ if(!d.results[j].ok) h+='<tr><td><code>'+d.results[j].sku+'</code></td><td class="text-danger">'+(d.results[j].error||'?')+'</td></tr>'; }
+    h+='</table>'; }
+  st.innerHTML=h; input.value='';
+}
+// Drop zones
+['std','cust'].forEach(function(t){ var z=document.getElementById('drop-'+t); z.addEventListener('dragover',function(e){e.preventDefault();z.style.background='#f0f4ff';}); z.addEventListener('dragleave',function(){z.style.background='';}); z.addEventListener('drop',function(e){e.preventDefault();z.style.background='';var files=e.dataTransfer.files;var input=document.getElementById('img-'+t+'-input');var dt=new DataTransfer();for(var i=0;i<files.length;i++)dt.items.add(files[i]);input.files=dt.files;uploadBatch(input,t==='std'?'Standard':'Customization');}); });
+
+// ── Image Overview ──
+async function renderImgOverview() {
+  var r=await imgApi('/overview'); var d=r.data||{};
+  document.getElementById('iov-total').textContent=d.total_skus||0; document.getElementById('iov-has').textContent=d.has_image||0;
+  document.getElementById('iov-miss').textContent=d.missing_image||0;
+  document.getElementById('iov-rate').textContent=(d.total_skus?Math.round(d.has_image/d.total_skus*100):0)+'%';
+  var typeF=document.getElementById('iov-type').value, showF=document.getElementById('iov-filter').value;
+  var list=[]; if(showF!=='has') list=list.concat((d.missing_list||[]).map(function(x){x.hasImg=false;return x;}));
+  if(showF!=='missing') list=list.concat((d.has_list||[]).map(function(x){x.hasImg=true;return x;}));
+  if(typeF) list=list.filter(function(x){return x.productType===typeF;});
+  document.getElementById('iov-tbody').innerHTML=list.length?list.map(function(x){return '<tr><td><code>'+x.sku+'</code></td><td><span class="sku-badge '+x.productType+'">'+x.productType+'</span></td><td>'+x.maintainDate+'</td><td>'+(x.hasImg?'<span class="text-success">✅</span>':'<span class="text-danger">❌ 缺图</span>')+'</td></tr>';}).join(''):'<tr><td colspan="4" class="empty-state">无数据</td></tr>';
+}
+function exportMissing() { var rows=[], tbody=document.getElementById('iov-tbody'), trs=tbody.querySelectorAll('tr');
+  for(var i=0;i<trs.length;i++){ var cells=trs[i].querySelectorAll('td'); if(cells.length>=4&&cells[3].textContent.indexOf('缺图')>=0) rows.push(cells[0].textContent.trim()+','+cells[1].textContent.trim()); }
+  if(!rows.length){alert('没有缺图的SKU');return;}
+  var blob=new Blob(['SKU,类型\n'+rows.join('\n')],{type:'text/csv'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='missing_images.csv'; a.click(); }
+
+// ── Image Delete ──
+async function renderImgDel() {
+  var p=[]; var t=document.getElementById('idel-type').value, s=(document.getElementById('idel-search').value||'').toLowerCase();
+  if(t) p.push('productType='+t); if(s) p.push('search='+s);
+  var r=await fetch(IMG_API+'/list?'+p.join('&')); var d=await r.json(); var list=d.data||[];
+  document.getElementById('idel-count').textContent=list.length+' 条'; imgDelSelected={}; document.getElementById('idel-all').checked=false;
+  document.getElementById('idel-tbody').innerHTML=list.length?list.map(function(x){return '<tr><td><input type="checkbox" onchange="toggleImgDel(\''+x.sku+'\',this.checked)"></td><td><code>'+x.sku+'</code></td><td><span class="sku-badge '+(x.productType||'')+'">'+(x.productType||'')+'</span></td><td>'+x.fileName+'</td><td>'+Math.round(x.size/1024)+'KB</td><td>'+x.mtime+'</td></tr>';}).join(''):'<tr><td colspan="6" class="empty-state">无数据</td></tr>';
+}
+function toggleAllImgDel(cb){var cbs=document.querySelectorAll('#idel-tbody input[type=checkbox]');for(var i=0;i<cbs.length;i++){cbs[i].checked=cb.checked;var sku=cbs[i].closest('tr').querySelector('code').textContent;if(cb.checked)imgDelSelected[sku]=true;else delete imgDelSelected[sku];}}
+function toggleImgDel(sku,checked){if(checked)imgDelSelected[sku]=true;else delete imgDelSelected[sku];}
+async function batchDelImgs(){var list=Object.keys(imgDelSelected);if(!list.length){alert('请先勾选');return;}if(!confirm('确认删除 '+list.length+' 张图片？'))return;var r=await imgApi('/delete',{skus:list});alert('已删除 '+(r.deleted||0)+' 张');renderImgDel();}
+
+// Init
+renderSkuTables();
+</script>
 {% endblock %}
